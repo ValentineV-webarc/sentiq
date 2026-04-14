@@ -84,30 +84,43 @@ def load_user(user_id):
 HF_API_URL = "https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
 HF_API_KEY = os.environ.get('HF_API_KEY', '')
 
-def analyse_sentiment(text):
-    if not text or str(text) == 'None':
-        return 'NEUTRAL', 0.0
+def analyse_sentiment_batch(texts):
+    """Analyse a batch of texts in one API call."""
+    clean = [str(t)[:512] if t and str(t) != 'None' else '' for t in texts]
+    results = [('NEUTRAL', 0.0)] * len(clean)
     try:
         headers = {"Authorization": f"Bearer {HF_API_KEY}"} if HF_API_KEY else {}
         response = http_requests.post(
             HF_API_URL,
             headers=headers,
-            json={"inputs": str(text)[:512]},
-            timeout=10
+            json={"inputs": clean},
+            timeout=60
         )
         if response.status_code == 200:
-            result = response.json()
-            if isinstance(result, list) and len(result) > 0:
-                if isinstance(result[0], list):
-                    result = result[0]
-                best = max(result, key=lambda x: x['score'])
-                label = best['label'].upper()
-                if label not in ['POSITIVE', 'NEGATIVE']:
-                    label = 'NEUTRAL'
-                return label, round(best['score'], 3)
+            data = response.json()
+            # data is a list of lists, one per input
+            if isinstance(data, list):
+                for i, item in enumerate(data):
+                    if isinstance(item, list) and len(item) > 0:
+                        best = max(item, key=lambda x: x['score'])
+                        label = best['label'].upper()
+                        if label not in ['POSITIVE', 'NEGATIVE']:
+                            label = 'NEUTRAL'
+                        results[i] = (label, round(best['score'], 3))
+                    elif isinstance(item, dict):
+                        label = item.get('label','NEUTRAL').upper()
+                        if label not in ['POSITIVE', 'NEGATIVE']:
+                            label = 'NEUTRAL'
+                        results[i] = (label, round(item.get('score', 0.0), 3))
+    except Exception as e:
+        print(f"[HF] Batch error: {e}")
+    return results
+
+def analyse_sentiment(text):
+    if not text or str(text) == 'None':
         return 'NEUTRAL', 0.0
-    except:
-        return 'NEUTRAL', 0.0
+    result = analyse_sentiment_batch([text])
+    return result[0]
 
 def run_sentiment_for_brands(brands, limit=50):
     newsapi = NewsApiClient(api_key=API_KEY)
@@ -467,11 +480,22 @@ def analyse():
         except Exception as e:
             return jsonify({'error': f'Failed to fetch articles for {brand}: {str(e)}'}), 500
 
+    if not all_articles:
+        return jsonify({'error': 'No articles found. Please try different brand names.'}), 400
+
     df = pd.DataFrame(all_articles)
     df['text'] = df['title'].fillna('') + ' ' + df['description'].fillna('')
-    results = df['text'].apply(analyse_sentiment)
-    df['sentiment']       = [r[0] for r in results]
-    df['confidence']      = [r[1] for r in results]
+
+    # Batch sentiment analysis — send all texts at once
+    BATCH_SIZE = 32
+    texts = df['text'].tolist()
+    all_results = []
+    for i in range(0, len(texts), BATCH_SIZE):
+        batch = texts[i:i+BATCH_SIZE]
+        all_results.extend(analyse_sentiment_batch(batch))
+
+    df['sentiment']       = [r[0] for r in all_results]
+    df['confidence']      = [r[1] for r in all_results]
     df['sentiment_score'] = (df['sentiment'] == 'POSITIVE').astype(int)
 
     summary = df.groupby(['brand', 'sentiment']).size().reset_index(name='count')

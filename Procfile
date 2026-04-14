@@ -1,1 +1,1 @@
-web: gunicorn sentiq_app:app
+web: gunicorn sentiq_app:app --timeout 120 --workers 1
