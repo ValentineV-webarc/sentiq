@@ -5,7 +5,7 @@ flask-mail
 werkzeug
 newsapi-python
 transformers
-torch
+torch --index-url https://download.pytorch.org/whl/cpu
 scipy
 pandas
 reportlab
