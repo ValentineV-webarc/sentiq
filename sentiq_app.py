@@ -39,6 +39,8 @@ mail          = Mail(app)
 
 API_KEY = os.environ.get('NEWS_API_KEY', '9a0f711450fd4bffb78ef899c2c85564')
 APP_URL = os.environ.get('APP_URL', 'http://localhost:5000')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -259,6 +261,45 @@ def check_all_alerts():
                 if sent:
                     alert.last_triggered = datetime.utcnow()
                     db.session.commit()
+
+def generate_insights(brands, kpis, articles):
+    """Use Gemini Flash to generate a natural language insight summary."""
+    if not GEMINI_API_KEY:
+        return None
+    try:
+        # Build context from top articles
+        article_lines = []
+        for a in articles[:20]:
+            article_lines.append(f"- [{a.get('brand')}] {a.get('title')} ({a.get('sentiment', '').lower()})")
+
+        brand_stats = []
+        for brand in brands:
+            k = kpis.get(brand, {})
+            brand_stats.append(f"{brand}: {k.get('positive', 0):.1f}% positive, {k.get('negative', 0):.1f}% negative ({k.get('total', 0)} articles)")
+
+        prompt = f"""You are a brand intelligence analyst. Based on the following news sentiment data, write a concise 2-3 sentence insight summary explaining what is driving the sentiment for each brand. Be specific, factual, and reference the article topics where relevant. Write in a professional but natural tone — no bullet points, just flowing prose.
+
+Brand sentiment overview:
+{chr(10).join(brand_stats)}
+
+Sample article headlines:
+{chr(10).join(article_lines)}
+
+Write your insight summary:"""
+
+        response = http_requests.post(
+            f"{GEMINI_API_URL}?key={GEMINI_API_KEY}",
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            timeout=20
+        )
+        if response.status_code == 200:
+            data = response.json()
+            text = data['candidates'][0]['content']['parts'][0]['text']
+            return text.strip()
+        return None
+    except Exception as e:
+        print(f"[Gemini] Error: {e}")
+        return None
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(check_all_alerts, 'interval', hours=1, id='alert_check')
@@ -550,8 +591,12 @@ def analyse():
             db.session.add(h)
             db.session.commit()
 
+    # Generate LLM insight
+    insight = generate_insights(brands, kpis, top_articles)
+
     return jsonify({'total_articles': len(df), 'brands': brands, 'kpis': kpis,
-                    'ab_test': ab_test, 'trend': trend_data, 'articles': top_articles})
+                    'ab_test': ab_test, 'trend': trend_data, 'articles': top_articles,
+                    'insight': insight})
 
 # ── PDF Export ────────────────────────────────────────────────────────────────
 
