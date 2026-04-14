@@ -650,31 +650,4 @@ def export_pdf():
 
 
 
-@app.route('/api/test')
-def test():
-    results = {}
-    try:
-        newsapi = NewsApiClient(api_key=API_KEY)
-        r = newsapi.get_everything(q='Apple', language='en', page_size=1)
-        results['newsapi'] = f"OK - {r.get('totalResults', 0)} results"
-    except Exception as e:
-        results['newsapi'] = f"ERROR: {str(e)}"
-    try:
-        headers = {"Authorization": f"Bearer {HF_API_KEY}"} if HF_API_KEY else {}
-        r = http_requests.post(HF_API_URL, headers=headers,
-            json={"inputs": "This is great!"}, timeout=15)
-        results['hf_api'] = f"Status {r.status_code}: {r.text[:200]}"
-    except Exception as e:
-        results['hf_api'] = f"ERROR: {str(e)}"
-    results['hf_key_set'] = bool(HF_API_KEY)
-    results['news_key'] = API_KEY[:8] + '...'
-    return jsonify(results)
 
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        print("Database ready.")
-    scheduler.start()
-    print("Alert scheduler started.")
-    print("Starting SentIQ — open http://localhost:5000")
-    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
