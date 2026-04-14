@@ -5,7 +5,7 @@ from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
 from newsapi import NewsApiClient
-from transformers import pipeline
+import requests as http_requests
 import pandas as pd
 from scipy import stats
 from reportlab.lib.pagesizes import A4
@@ -81,24 +81,31 @@ def load_user(user_id):
 
 # ── Sentiment model ───────────────────────────────────────────────────────────
 
-sentiment_model = None
-
-def get_model():
-    global sentiment_model
-    if sentiment_model is None:
-        sentiment_model = pipeline(
-            'sentiment-analysis',
-            model='distilbert-base-uncased-finetuned-sst-2-english'
-        )
-    return sentiment_model
+HF_API_URL = "https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
+HF_API_KEY = os.environ.get('HF_API_KEY', '')
 
 def analyse_sentiment(text):
-    model = get_model()
     if not text or str(text) == 'None':
         return 'NEUTRAL', 0.0
     try:
-        result = model(str(text)[:512])[0]
-        return result['label'], round(result['score'], 3)
+        headers = {"Authorization": f"Bearer {HF_API_KEY}"} if HF_API_KEY else {}
+        response = http_requests.post(
+            HF_API_URL,
+            headers=headers,
+            json={"inputs": str(text)[:512]},
+            timeout=10
+        )
+        if response.status_code == 200:
+            result = response.json()
+            if isinstance(result, list) and len(result) > 0:
+                if isinstance(result[0], list):
+                    result = result[0]
+                best = max(result, key=lambda x: x['score'])
+                label = best['label'].upper()
+                if label not in ['POSITIVE', 'NEGATIVE']:
+                    label = 'NEUTRAL'
+                return label, round(best['score'], 3)
+        return 'NEUTRAL', 0.0
     except:
         return 'NEUTRAL', 0.0
 
