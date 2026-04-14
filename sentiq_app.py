@@ -81,7 +81,7 @@ def load_user(user_id):
 
 # ── Sentiment model ───────────────────────────────────────────────────────────
 
-HF_API_URL = "https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english"
+HF_API_URL = "https://router.huggingface.co/hf-inference/models/distilbert-base-uncased-finetuned-sst-2-english/pipeline/text-classification"
 HF_API_KEY = os.environ.get('HF_API_KEY', '')
 
 def analyse_sentiment_batch(texts):
