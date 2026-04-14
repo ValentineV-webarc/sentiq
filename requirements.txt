@@ -1,0 +1,13 @@
+flask
+flask-sqlalchemy
+flask-login
+flask-mail
+werkzeug
+newsapi-python
+transformers
+torch
+scipy
+pandas
+reportlab
+apscheduler
+gunicorn
