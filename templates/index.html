@@ -126,10 +126,11 @@ th { background: var(--bg); padding: 11px 16px; text-align: left; font-size: 11p
 td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--bg); }
-.pill { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 500; letter-spacing: 0.01em; }
-.pill-positive { background: var(--positive-bg); color: var(--positive); }
-.pill-negative { background: var(--negative-bg); color: var(--negative); }
-.pill-neutral  { background: #FEF9EC; color: var(--neutral); }
+.sentiment-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 400; color: var(--text); }
+.sentiment-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-positive { background: #16A34A; }
+.dot-negative { background: #DC2626; }
+.dot-neutral  { background: #D97706; }
 .article-title { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .article-link { color: var(--text); text-decoration: none; font-size: 13px; }
 .article-link:hover { color: var(--accent); }
@@ -689,11 +690,11 @@ function renderResults(data) {
   data.articles.forEach(a=>{
     const s = a.sentiment || 'Neutral';
     const label = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-    const pc = s==='POSITIVE'?'pill-positive':s==='NEGATIVE'?'pill-negative':'pill-neutral';
+    const dot = s==='POSITIVE'?'dot-positive':s==='NEGATIVE'?'dot-negative':'dot-neutral';
     tbody.innerHTML+=`<tr>
       <td style="font-weight:500">${a.brand}</td>
       <td class="article-title"><a class="article-link" href="${a.url}" target="_blank">${a.title}</a></td>
-      <td><span class="pill ${pc}">${label}</span></td>
+      <td><span class="sentiment-badge"><span class="sentiment-dot ${dot}"></span>${label}</span></td>
       <td style="color:var(--text-secondary)">${a.confidence}</td>
       <td style="color:var(--text-secondary)">${a.source}</td>
     </tr>`; });
