@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SentIQ — Brand Sentiment Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #F7F6F3; --surface: #FFFFFF; --border: #E4E1DA; --text: #18170F;
+  --text-secondary: #6B6860; --accent: #1B3A6B; --accent-light: #EEF2F9;
+  --positive: #166534; --positive-bg: #F0FDF4;
+  --negative: #991B1B; --negative-bg: #FEF2F2;
+  --neutral: #92400E; --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+}
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+/* NAV */
+nav { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 2rem; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.nav-brand { display: flex; align-items: baseline; gap: 10px; }
+.nav-logo { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--accent); letter-spacing: -0.3px; }
+.nav-tagline { font-size: 13px; color: var(--text-secondary); font-weight: 300; border-left: 1px solid var(--border); padding-left: 10px; }
+.nav-right { display: flex; align-items: center; gap: 12px; }
+.nav-user { font-size: 13px; color: var(--text-secondary); }
+.nav-user span { font-weight: 600; color: var(--text); }
+.btn-nav { padding: 7px 16px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; border-radius: var(--radius); cursor: pointer; transition: opacity 0.15s; border: 1px solid var(--border); }
+.btn-nav:hover { opacity: 0.8; }
+.btn-nav-outline { background: transparent; color: var(--text); }
+.btn-nav-fill { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* LAYOUT */
+.layout { display: flex; flex: 1; }
+
+/* SIDEBAR */
+aside { width: 280px; min-width: 280px; background: var(--surface); border-right: 1px solid var(--border); padding: 2rem 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; overflow-y: auto; }
+.sidebar-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; }
+textarea { width: 100%; font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; resize: vertical; min-height: 120px; line-height: 1.6; outline: none; transition: border-color 0.15s; }
+textarea:focus { border-color: var(--accent); }
+.slider-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.slider-val { font-size: 14px; font-weight: 600; color: var(--accent); }
+input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+.hint { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.btn-run { width: 100%; padding: 11px; background: var(--accent); color: white; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; border: none; border-radius: var(--radius); cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
+.btn-run:hover { opacity: 0.88; }
+.btn-run:active { transform: scale(0.98); }
+.btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
+.export-row { display: flex; gap: 8px; }
+.btn-export { flex: 1; padding: 9px 10px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; border-radius: var(--radius); cursor: pointer; transition: opacity 0.15s; display: flex; align-items: center; justify-content: center; gap: 5px; background: var(--accent); color: white; border: 1px solid var(--accent); }
+.btn-export:hover { opacity: 0.8; }
+.btn-export:disabled { opacity: 0.4; cursor: not-allowed; }
+.export-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
+
+/* History */
+.history-section { border-top: 1px solid var(--border); padding-top: 1.5rem; }
+.history-list { display: flex; flex-direction: column; gap: 6px; }
+.history-empty { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.history-item { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.history-item-row { display: flex; align-items: center; gap: 6px; padding: 9px 10px; cursor: pointer; }
+.history-item-row:hover { background: #eeeae2; }
+.history-item-info { flex: 1; min-width: 0; }
+.history-brands { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-date { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+.history-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.btn-text-sm { background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 11px; color: var(--text-secondary); padding: 2px 0; }
+.btn-text-sm:hover { color: var(--accent); text-decoration: underline; }
+.btn-text-sm.danger:hover { color: var(--negative); }
+.btn-del { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: 16px; padding: 2px 4px; border-radius: 4px; line-height: 1; }
+.btn-del:hover { color: var(--negative); background: var(--negative-bg); }
+
+/* Alert panel */
+.alert-panel { border-top: 1px solid var(--border); padding: 10px; background: var(--accent-light); display: none; }
+.alert-panel.open { display: block; }
+.alert-panel-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.alert-label { font-size: 11px; color: var(--text-secondary); margin-bottom: 3px; }
+.alert-input { width: 100%; font-family: 'DM Sans', sans-serif; font-size: 12px; padding: 6px 8px; border: 1px solid #C7D7F0; border-radius: 5px; background: white; color: var(--text); outline: none; margin-bottom: 7px; }
+.alert-input:focus { border-color: var(--accent); }
+.alert-btn-row { display: flex; gap: 6px; }
+.btn-alert-save { flex: 1; padding: 7px; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; background: var(--accent); color: white; border: none; border-radius: 5px; cursor: pointer; }
+.btn-alert-save:hover { opacity: 0.85; }
+.btn-alert-secondary { padding: 7px 10px; font-family: 'DM Sans', sans-serif; font-size: 12px; background: white; color: var(--accent); border: 1px solid #C7D7F0; border-radius: 5px; cursor: pointer; }
+.btn-alert-secondary:hover { background: #f0f5fb; }
+.alert-active-info { font-size: 12px; color: var(--positive); font-weight: 500; margin-bottom: 6px; }
+.alert-sub { font-size: 11px; color: var(--text-secondary); margin-top: 6px; }
+
+/* MAIN */
+main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; gap: 12px; color: var(--text-secondary); text-align: center; }
+.empty-state .big { font-family: 'DM Serif Display', serif; font-size: 32px; color: var(--text); }
+.empty-state p { font-size: 15px; max-width: 380px; line-height: 1.6; }
+.loading-state { display: none; flex-direction: column; align-items: center; justify-content: center; height: 60vh; gap: 16px; }
+.loading-state.active { display: flex; }
+.spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-state p { font-size: 15px; color: var(--text-secondary); }
+.results { display: none; }
+.results.active { display: block; }
+.results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+.results-title { font-family: 'DM Serif Display', serif; font-size: 24px; color: var(--text); }
+.results-meta { font-size: 13px; color: var(--text-secondary); }
+.error-banner { display: none; background: var(--negative-bg); border: 1px solid #FECACA; border-radius: var(--radius); padding: 12px 16px; font-size: 14px; color: var(--negative); margin-bottom: 1.5rem; }
+.error-banner.active { display: block; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem 1.5rem; box-shadow: var(--shadow); }
+.kpi-brand { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; }
+.kpi-number { font-family: 'DM Serif Display', serif; font-size: 36px; color: var(--text); line-height: 1; margin-bottom: 4px; }
+.kpi-label { font-size: 13px; color: var(--text-secondary); }
+.kpi-bar { margin-top: 10px; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
+.kpi-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.8s ease; }
+.ab-card { background: var(--accent-light); border: 1px solid #C7D7F0; border-radius: var(--radius); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; gap: 2rem; flex-wrap: wrap; align-items: center; }
+.ab-title { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.ab-value { font-size: 20px; font-weight: 600; color: var(--text); }
+.ab-sublabel { font-size: 12px; color: var(--text-secondary); }
+.ab-conclusion { margin-left: auto; font-size: 14px; font-weight: 500; color: var(--accent); }
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); }
+.chart-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 1rem; }
+.chart-wrap { position: relative; height: 260px; }
+.articles-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.articles-header { font-size: 14px; font-weight: 600; color: var(--text); padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: var(--bg); padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg); }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+.pill-positive { background: var(--positive-bg); color: var(--positive); }
+.pill-negative { background: var(--negative-bg); color: var(--negative); }
+.pill-neutral  { background: #FEF9EC; color: var(--neutral); }
+.article-title { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.article-link { color: var(--text); text-decoration: none; }
+.article-link:hover { color: var(--accent); }
+
+/* AUTH MODAL */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 200; align-items: center; justify-content: center; }
+.modal-overlay.active { display: flex; }
+.modal { background: var(--surface); border-radius: 12px; padding: 2rem; width: 400px; max-width: 95vw; box-shadow: 0 20px 60px rgba(0,0,0,0.15); position: relative; }
+.modal-title { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--text); margin-bottom: 4px; }
+.modal-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 1.5rem; }
+.modal-tabs { display: flex; margin-bottom: 1.5rem; border-bottom: 2px solid var(--border); }
+.modal-tab { padding: 8px 20px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; background: none; border: none; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; margin-bottom: -2px; }
+.modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.modal-form { display: flex; flex-direction: column; gap: 12px; }
+.modal-input { width: 100%; padding: 10px 12px; font-family: 'DM Sans', sans-serif; font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text); outline: none; transition: border-color 0.15s; }
+.modal-input:focus { border-color: var(--accent); }
+.modal-error { font-size: 13px; color: var(--negative); background: var(--negative-bg); padding: 8px 12px; border-radius: var(--radius); display: none; }
+.modal-error.active { display: block; }
+.modal-success { font-size: 13px; color: var(--positive); background: var(--positive-bg); padding: 8px 12px; border-radius: var(--radius); display: none; }
+.modal-success.active { display: block; }
+.btn-modal-submit { width: 100%; padding: 11px; background: var(--accent); color: white; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; border: none; border-radius: var(--radius); cursor: pointer; margin-top: 4px; transition: opacity 0.15s; }
+.btn-modal-submit:hover { opacity: 0.88; }
+.btn-modal-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-modal-guest { width: 100%; padding: 10px; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: background 0.15s; }
+.btn-modal-guest:hover { background: var(--border); }
+.modal-divider { display: flex; align-items: center; gap: 10px; }
+.modal-divider-line { flex: 1; height: 1px; background: var(--border); }
+.modal-divider-text { font-size: 12px; color: var(--text-secondary); }
+.forgot-link { font-size: 13px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; text-align: right; text-decoration: underline; }
+.forgot-link:hover { opacity: 0.7; }
+.modal-close { position: absolute; top: 12px; right: 16px; background: none; border: none; font-size: 22px; cursor: pointer; color: var(--text-secondary); line-height: 1; }
+.modal-close:hover { color: var(--text); }
+.back-link { font-size: 13px; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; text-decoration: underline; }
+.back-link:hover { opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<!-- AUTH MODAL -->
+<div class="modal-overlay" id="auth-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeAuthModal()">×</button>
+
+    <!-- Login / Register tabs -->
+    <div id="auth-main">
+      <div class="modal-title">Welcome to SentIQ</div>
+      <div class="modal-sub">Sign in to save history and set sentiment alerts.</div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" id="tab-login" onclick="switchTab('login')">Sign in</button>
+        <button class="modal-tab" id="tab-register" onclick="switchTab('register')">Register</button>
+      </div>
+      <div class="modal-error" id="auth-error"></div>
+      <div class="modal-success" id="auth-success"></div>
+
+      <!-- Sign in -->
+      <div id="form-login" class="modal-form">
+        <input class="modal-input" id="login-email" type="email" placeholder="Email address" />
+        <input class="modal-input" id="login-password" type="password" placeholder="Password" />
+        <button class="forgot-link" onclick="showForgotPassword()" style="text-align:right">Forgot password?</button>
+        <button class="btn-modal-submit" id="login-btn" onclick="doLogin()">Sign in</button>
+        <div class="modal-divider">
+          <div class="modal-divider-line"></div>
+          <span class="modal-divider-text">or</span>
+          <div class="modal-divider-line"></div>
+        </div>
+        <button class="btn-modal-guest" onclick="continueAsGuest()">Continue as guest</button>
+      </div>
+
+      <!-- Register -->
+      <div id="form-register" class="modal-form" style="display:none">
+        <div style="display:flex;gap:8px">
+          <input class="modal-input" id="reg-firstname" type="text" placeholder="First name" />
+          <input class="modal-input" id="reg-lastname" type="text" placeholder="Last name (optional)" />
+        </div>
+        <input class="modal-input" id="reg-email" type="email" placeholder="Email address" />
+        <input class="modal-input" id="reg-password" type="password" placeholder="Password (min 6 chars)" />
+        <button class="btn-modal-submit" id="reg-btn" onclick="doRegister()">Create account</button>
+        <div class="modal-divider">
+          <div class="modal-divider-line"></div>
+          <span class="modal-divider-text">or</span>
+          <div class="modal-divider-line"></div>
+        </div>
+        <button class="btn-modal-guest" onclick="continueAsGuest()">Continue as guest</button>
+      </div>
+    </div>
+
+    <!-- Forgot password -->
+    <div id="auth-forgot" style="display:none">
+      <div class="modal-title">Reset password</div>
+      <div class="modal-sub">Enter your email and we'll send you a reset link.</div>
+      <div class="modal-error" id="forgot-error"></div>
+      <div class="modal-success" id="forgot-success"></div>
+      <div class="modal-form">
+        <input class="modal-input" id="forgot-email" type="email" placeholder="Email address" />
+        <button class="btn-modal-submit" id="forgot-btn" onclick="doForgotPassword()">Send reset link</button>
+        <button class="back-link" onclick="showAuthMain()">← Back to sign in</button>
+      </div>
+    </div>
+
+    <!-- Reset password (from email link) -->
+    <div id="auth-reset" style="display:none">
+      <div class="modal-title">Set new password</div>
+      <div class="modal-sub">Choose a new password for your account.</div>
+      <div class="modal-error" id="reset-error"></div>
+      <div class="modal-form">
+        <input class="modal-input" id="reset-password" type="password" placeholder="New password (min 6 chars)" />
+        <input class="modal-input" id="reset-password2" type="password" placeholder="Confirm new password" />
+        <button class="btn-modal-submit" id="reset-btn" onclick="doResetPassword()">Set new password</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<nav>
+  <div class="nav-brand">
+    <span class="nav-logo">SentIQ</span>
+    <span class="nav-tagline">Brand Sentiment Intelligence</span>
+  </div>
+  <div class="nav-right" id="nav-right"></div>
+</nav>
+
+<div class="layout">
+  <aside>
+    <div>
+      <div class="sidebar-label">Brands to monitor</div>
+      <textarea id="brands-input" placeholder="One brand per line&#10;&#10;e.g.&#10;MediaTek&#10;Snapdragon&#10;Apple">MediaTek
+Snapdragon</textarea>
+    </div>
+    <div>
+      <div class="slider-row">
+        <div class="sidebar-label" style="margin:0">Articles per brand</div>
+        <span class="slider-val" id="slider-val">50</span>
+      </div>
+      <input type="range" id="article-limit" min="10" max="100" value="50"
+             oninput="document.getElementById('slider-val').textContent = this.value">
+      <p class="hint" style="margin-top:6px">NewsAPI free tier limit: 100 per query</p>
+    </div>
+    <button class="btn-run" id="run-btn" onclick="runAnalysis()">Run Analysis</button>
+    <div>
+      <div class="sidebar-label" style="margin-bottom:10px">Export results</div>
+      <div class="export-row">
+        <button class="btn-export" id="csv-btn" onclick="exportCSV()" disabled>
+          <span id="csv-icon">↓</span><span class="export-spinner" id="csv-spinner"></span> CSV
+        </button>
+        <button class="btn-export" id="pdf-btn" onclick="exportPDF()" disabled>
+          <span id="pdf-icon">↓</span><span class="export-spinner" id="pdf-spinner"></span> PDF Report
+        </button>
+      </div>
+    </div>
+    <div class="history-section" id="history-section" style="display:none">
+      <div class="sidebar-label">Search history</div>
+      <div class="history-list" id="history-list"></div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="empty-state" id="empty-state">
+      <div class="big">Start analysing</div>
+      <p>Enter the brands you want to monitor on the left and click Run Analysis to get live sentiment insights.</p>
+    </div>
+    <div class="loading-state" id="loading-state">
+      <div class="spinner"></div>
+      <p id="loading-msg">Loading articles...</p>
+    </div>
+    <div class="results" id="results">
+      <div class="error-banner" id="error-banner"></div>
+      <div class="results-header">
+        <div class="results-title" id="results-title">Results</div>
+        <div class="results-meta" id="results-meta"></div>
+      </div>
+      <div class="kpi-grid" id="kpi-grid"></div>
+      <div class="ab-card" id="ab-card" style="display:none"></div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Sentiment Distribution</div>
+          <div class="chart-wrap"><canvas id="bar-chart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Sentiment Trend Over Time</div>
+          <div class="chart-wrap"><canvas id="line-chart"></canvas></div>
+        </div>
+      </div>
+      <div class="articles-card">
+        <div class="articles-header">Articles</div>
+        <table>
+          <thead><tr><th>Brand</th><th>Title</th><th>Sentiment</th><th>Confidence</th><th>Source</th></tr></thead>
+          <tbody id="articles-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const COLORS = ['#1B3A6B','#D97706','#16A34A','#DC2626','#7C3AED','#0891B2'];
+let barChart = null, lineChart = null, lastData = null, currentUser = null;
+let resetToken = null; // set if page loaded from reset link
+
+// Check if page was loaded from a password reset link
+window.addEventListener('DOMContentLoaded', () => {
+  const path = window.location.pathname;
+  const match = path.match(/\/reset-password\/(.+)/);
+  if (match) {
+    resetToken = match[1];
+    showResetPassword();
+    document.getElementById('auth-modal').classList.add('active');
+    history.replaceState(null, '', '/');
+  }
+});
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+async function checkAuth() {
+  const res = await fetch('/auth/me');
+  const data = await res.json();
+  if (data.logged_in) { currentUser = data; renderNav(true); loadHistory(); }
+  else { currentUser = null; renderNav(false); }
+}
+
+function renderNav(loggedIn) {
+  const el = document.getElementById('nav-right');
+  if (loggedIn) {
+    el.innerHTML = `<span class="nav-user">Hi, <span>${currentUser.name.split(' ')[0]}</span></span>
+      <button class="btn-nav btn-nav-outline" onclick="doLogout()">Log out</button>`;
+    document.getElementById('history-section').style.display = 'block';
+  } else {
+    el.innerHTML = `<button class="btn-nav btn-nav-outline" onclick="openAuthModal('login')">Sign in</button>
+      <button class="btn-nav btn-nav-fill" onclick="openAuthModal('register')">Register</button>`;
+    document.getElementById('history-section').style.display = 'none';
+  }
+}
+
+function openAuthModal(tab) { showAuthMain(); switchTab(tab); document.getElementById('auth-modal').classList.add('active'); }
+function closeAuthModal() { document.getElementById('auth-modal').classList.remove('active'); }
+function showAuthMain() {
+  document.getElementById('auth-main').style.display = 'block';
+  document.getElementById('auth-forgot').style.display = 'none';
+  document.getElementById('auth-reset').style.display = 'none';
+  clearAuthMessages();
+}
+function showForgotPassword() {
+  document.getElementById('auth-main').style.display = 'none';
+  document.getElementById('auth-forgot').style.display = 'block';
+  clearAuthMessages();
+}
+function showResetPassword() {
+  document.getElementById('auth-main').style.display = 'none';
+  document.getElementById('auth-forgot').style.display = 'none';
+  document.getElementById('auth-reset').style.display = 'block';
+}
+function clearAuthMessages() {
+  ['auth-error','auth-success','forgot-error','forgot-success','reset-error'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.remove('active'); el.textContent = ''; }
+  });
+}
+
+function switchTab(tab) {
+  document.getElementById('form-login').style.display    = tab==='login'    ? 'flex':'none';
+  document.getElementById('form-register').style.display = tab==='register' ? 'flex':'none';
+  document.getElementById('tab-login').classList.toggle('active',    tab==='login');
+  document.getElementById('tab-register').classList.toggle('active', tab==='register');
+  clearAuthMessages();
+}
+
+function continueAsGuest() { closeAuthModal(); }
+
+async function doLogin() {
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  const res  = await fetch('/auth/login', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email: document.getElementById('login-email').value.trim(),
+                          password: document.getElementById('login-password').value}) });
+  const data = await res.json();
+  btn.disabled = false; btn.textContent = 'Sign in';
+  if (data.error) { showMsg('auth-error', data.error); return; }
+  currentUser = data; closeAuthModal(); renderNav(true); loadHistory();
+}
+
+async function doRegister() {
+  const btn = document.getElementById('reg-btn');
+  btn.disabled = true; btn.textContent = 'Creating account…';
+  const firstname = document.getElementById('reg-firstname').value.trim();
+  const lastname  = document.getElementById('reg-lastname').value.trim();
+  const res  = await fetch('/auth/register', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name: `${firstname} ${lastname}`.trim(),
+                          email: document.getElementById('reg-email').value.trim(),
+                          password: document.getElementById('reg-password').value}) });
+  const data = await res.json();
+  btn.disabled = false; btn.textContent = 'Create account';
+  if (data.error) { showMsg('auth-error', data.error); return; }
+  currentUser = data; closeAuthModal(); renderNav(true); loadHistory();
+}
+
+async function doLogout() {
+  await fetch('/auth/logout', {method:'POST'});
+  currentUser = null; renderNav(false);
+}
+
+async function doForgotPassword() {
+  const btn = document.getElementById('forgot-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const email = document.getElementById('forgot-email').value.trim();
+  await fetch('/auth/forgot-password', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email}) });
+  btn.disabled = false; btn.textContent = 'Send reset link';
+  showMsg('forgot-success', 'If that email exists, a reset link has been sent. Check your inbox.');
+}
+
+async function doResetPassword() {
+  const btn = document.getElementById('reset-btn');
+  const p1  = document.getElementById('reset-password').value;
+  const p2  = document.getElementById('reset-password2').value;
+  if (p1 !== p2) { showMsg('reset-error', 'Passwords do not match.'); return; }
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const res  = await fetch('/auth/reset-password', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({token: resetToken, password: p1}) });
+  const data = await res.json();
+  btn.disabled = false; btn.textContent = 'Set new password';
+  if (data.error) { showMsg('reset-error', data.error); return; }
+  currentUser = data; closeAuthModal(); renderNav(true); loadHistory();
+}
+
+function showMsg(id, text, isError=true) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.add('active');
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  if (!currentUser) return;
+  const res = await fetch('/api/history');
+  if (!res.ok) return;
+  renderHistory(await res.json());
+}
+
+function renderHistory(list) {
+  const el = document.getElementById('history-list');
+  if (!list.length) {
+    el.innerHTML = '<p class="history-empty">No searches yet. Run an analysis to get started.</p>';
+    return;
+  }
+  el.innerHTML = list.map(h => {
+    const alertStatus = h.alert
+      ? `<span style="font-size:11px;color:var(--positive);font-weight:500">Alert on (below ${h.alert.threshold}%)</span>`
+      : '';
+    return `
+    <div class="history-item" id="hitem-${h.id}">
+      <div class="history-item-row" onclick="rerunSearch(${JSON.stringify(h).replace(/"/g,'&quot;')})">
+        <div class="history-item-info">
+          <div class="history-brands">${h.brands.join(' vs ')}</div>
+          <div class="history-date">${h.created_at}${h.alert ? ' · Alert on' : ''}</div>
+        </div>
+        <div class="history-actions" onclick="event.stopPropagation()">
+          <button class="btn-del" onclick="deleteHistory(${h.id})" title="Remove">×</button>
+        </div>
+      </div>
+      <div style="padding:0 10px 8px;display:flex;gap:12px;align-items:center" onclick="event.stopPropagation()">
+        ${h.alert
+          ? `<button class="btn-text-sm" onclick="toggleAlertPanel(${h.id})">Edit alert</button>
+             <button class="btn-text-sm danger" onclick="removeAlert(${h.id})">Remove alert</button>`
+          : `<button class="btn-text-sm" onclick="toggleAlertPanel(${h.id})">Set alert</button>`
+        }
+      </div>
+      <div class="alert-panel" id="alert-panel-${h.id}">
+        ${renderAlertPanel(h)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderAlertPanel(h) {
+  if (h.alert) {
+    return `
+      <div class="alert-panel-title">Alert settings</div>
+      <div class="alert-active-info">Active — below ${h.alert.threshold}% → ${h.alert.alert_email}</div>
+      ${h.alert.last_triggered ? `<div class="alert-sub">Last triggered: ${h.alert.last_triggered}</div>` : ''}
+      <div class="alert-btn-row" style="margin-top:8px">
+        <button class="btn-alert-secondary" onclick="testAlert(${h.id})">Send test email</button>
+      </div>`;
+  }
+  return `
+    <div class="alert-panel-title">Set alert</div>
+    <div class="alert-label">Alert email</div>
+    <input class="alert-input" id="alert-email-${h.id}" type="email" placeholder="you@example.com" value="${currentUser ? currentUser.email : ''}" />
+    <div class="alert-label">Alert when positive % drops below</div>
+    <input class="alert-input" id="alert-threshold-${h.id}" type="number" min="1" max="99" value="40" />
+    <div class="alert-btn-row">
+      <button class="btn-alert-save" onclick="saveAlert(${h.id})">Save alert</button>
+    </div>
+    <div class="alert-sub">Checked daily. You'll be emailed when any brand drops below threshold.</div>`;
+}
+
+function toggleAlertPanel(id) {
+  document.getElementById(`alert-panel-${id}`).classList.toggle('open');
+}
+
+async function saveAlert(historyId) {
+  const email     = document.getElementById(`alert-email-${historyId}`).value.trim();
+  const threshold = parseFloat(document.getElementById(`alert-threshold-${historyId}`).value);
+  const res  = await fetch(`/api/history/${historyId}/alert`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({alert_email: email, threshold})
+  });
+  const data = await res.json();
+  if (data.error) { alert(data.error); return; }
+  loadHistory();
+}
+
+async function removeAlert(historyId) {
+  await fetch(`/api/history/${historyId}/alert`, {method:'DELETE'});
+  loadHistory();
+}
+
+async function testAlert(historyId) {
+  const btn = event.target;
+  btn.textContent = 'Sending…'; btn.disabled = true;
+  const res  = await fetch(`/api/history/${historyId}/alert/test`, {method:'POST'});
+  const data = await res.json();
+  btn.disabled = false;
+  btn.textContent = data.ok ? '✓ Sent!' : 'Failed';
+  if (!data.ok) alert('Email failed: ' + data.error);
+  setTimeout(() => btn.textContent = 'Send test email', 2000);
+}
+
+async function deleteHistory(id) {
+  await fetch(`/api/history/${id}`, {method:'DELETE'});
+  loadHistory();
+}
+
+function rerunSearch(h) {
+  document.getElementById('brands-input').value = h.brands.join('\n');
+  document.getElementById('article-limit').value = h.limit;
+  document.getElementById('slider-val').textContent = h.limit;
+  runAnalysis();
+}
+
+// ── Analysis ──────────────────────────────────────────────────────────────────
+async function runAnalysis() {
+  const brands = document.getElementById('brands-input').value.split('\n').map(b=>b.trim()).filter(b=>b.length>0);
+  const limit  = parseInt(document.getElementById('article-limit').value);
+  if (brands.length < 2) { alert('Please enter at least 2 brands.'); return; }
+
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('results').classList.remove('active');
+  document.getElementById('loading-state').classList.add('active');
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('error-banner').classList.remove('active');
+  document.getElementById('csv-btn').disabled = true;
+  document.getElementById('pdf-btn').disabled = true;
+
+  const msgs = ['Loading articles...','Running sentiment analysis...','Computing statistics...'];
+  let mi = 0;
+  const msgInterval = setInterval(() => { mi=(mi+1)%msgs.length; document.getElementById('loading-msg').textContent=msgs[mi]; }, 4000);
+
+  try {
+    const res  = await fetch('/api/analyse', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({brands,limit}) });
+    const data = await res.json();
+    clearInterval(msgInterval);
+    if (data.error) {
+      document.getElementById('loading-state').classList.remove('active');
+      document.getElementById('results').classList.add('active');
+      document.getElementById('error-banner').textContent = data.error;
+      document.getElementById('error-banner').classList.add('active');
+      return;
+    }
+    lastData = data;
+    renderResults(data);
+    document.getElementById('csv-btn').disabled = false;
+    document.getElementById('pdf-btn').disabled = false;
+    if (currentUser) loadHistory();
+  } catch(e) {
+    clearInterval(msgInterval);
+    document.getElementById('loading-state').classList.remove('active');
+    document.getElementById('results').classList.add('active');
+    document.getElementById('error-banner').textContent = 'Something went wrong. Please try again.';
+    document.getElementById('error-banner').classList.add('active');
+  } finally {
+    document.getElementById('run-btn').disabled = false;
+    document.getElementById('loading-state').classList.remove('active');
+  }
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!lastData) return;
+  const btn=document.getElementById('csv-btn'); btn.disabled=true;
+  document.getElementById('csv-icon').style.display='none';
+  document.getElementById('csv-spinner').style.display='inline-block';
+  try {
+    const headers=['Brand','Title','Sentiment','Confidence','Source','URL'];
+    const rows=lastData.articles.map(a=>[`"${(a.brand||'').replace(/"/g,'""')}"`,`"${(a.title||'').replace(/"/g,'""')}"`,a.sentiment||'',a.confidence||'',`"${(a.source||'').replace(/"/g,'""')}"`,`"${(a.url||'').replace(/"/g,'""')}"`]);
+    rows.push([],['--- KPI Summary ---'],['Brand','Positive %','Negative %','Total Articles']);
+    lastData.brands.forEach(b=>{ const k=lastData.kpis[b]; rows.push([b,k.positive.toFixed(1)+'%',k.negative.toFixed(1)+'%',k.total]); });
+    const csv=[headers.join(','),...rows.map(r=>r.join(','))].join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`sentiq_${lastData.brands.join('_')}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  } finally { setTimeout(()=>{ btn.disabled=false; document.getElementById('csv-icon').style.display='inline'; document.getElementById('csv-spinner').style.display='none'; },600); }
+}
+
+async function exportPDF() {
+  if (!lastData) return;
+  const btn=document.getElementById('pdf-btn'); btn.disabled=true;
+  document.getElementById('pdf-icon').style.display='none';
+  document.getElementById('pdf-spinner').style.display='inline-block';
+  try {
+    const res=await fetch('/api/export/pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(lastData)});
+    if (!res.ok) { alert('PDF export failed.'); return; }
+    const blob=await res.blob(); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`sentiq_report_${lastData.brands.join('_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click(); URL.revokeObjectURL(url);
+  } catch(e) { alert('PDF export failed.'); }
+  finally { btn.disabled=false; document.getElementById('pdf-icon').style.display='inline'; document.getElementById('pdf-spinner').style.display='none'; }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderResults(data) {
+  document.getElementById('results-title').textContent = data.brands.join(' vs ');
+  document.getElementById('results-meta').textContent  = `${data.total_articles} articles analysed`;
+  const grid=document.getElementById('kpi-grid'); grid.innerHTML='';
+  data.brands.forEach((brand,i)=>{ const kpi=data.kpis[brand]; grid.innerHTML+=`
+    <div class="kpi-card">
+      <div class="kpi-brand">${brand}</div>
+      <div class="kpi-number">${kpi.positive.toFixed(1)}%</div>
+      <div class="kpi-label">positive sentiment</div>
+      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${kpi.positive}%;background:${COLORS[i]}"></div></div>
+    </div>`; });
+  const abCard=document.getElementById('ab-card');
+  if (data.ab_test) {
+    abCard.style.display='flex';
+    abCard.innerHTML=`<div><div class="ab-title">A/B Test</div><div class="ab-value">${data.ab_test.t_stat}</div><div class="ab-sublabel">T-statistic</div></div>
+      <div><div class="ab-title">P-value</div><div class="ab-value">${data.ab_test.p_value}</div><div class="ab-sublabel">α = 0.05</div></div>
+      <div class="ab-conclusion">${data.ab_test.significant?'Statistically significant difference':'No significant difference at α = 0.05'}</div>`;
+  } else abCard.style.display='none';
+  if (barChart) barChart.destroy();
+  barChart=new Chart(document.getElementById('bar-chart').getContext('2d'),{type:'bar',data:{labels:data.brands,
+    datasets:[{label:'Positive',data:data.brands.map(b=>data.kpis[b].positive),backgroundColor:'#DCFCE7',borderColor:'#16A34A',borderWidth:1.5,borderRadius:4},
+              {label:'Negative',data:data.brands.map(b=>data.kpis[b].negative),backgroundColor:'#FEE2E2',borderColor:'#DC2626',borderWidth:1.5,borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'DM Sans',size:12}}}},
+      scales:{y:{max:100,ticks:{callback:v=>v+'%',font:{family:'DM Sans',size:11}},grid:{color:'#F0EDE6'}},x:{ticks:{font:{family:'DM Sans',size:12}},grid:{display:false}}}}});
+  if (lineChart) lineChart.destroy();
+  const allDates=[...new Set(data.brands.flatMap(b=>data.trend[b]?.dates||[]))].sort();
+  lineChart=new Chart(document.getElementById('line-chart').getContext('2d'),{type:'line',
+    data:{labels:allDates,datasets:data.brands.map((brand,i)=>({label:brand,data:data.trend[brand]?.scores.map(s=>+(s*100).toFixed(1))||[],
+      borderColor:COLORS[i],backgroundColor:'transparent',pointBackgroundColor:COLORS[i],pointRadius:4,tension:0.3,borderWidth:2}))},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'DM Sans',size:12}}}},
+      scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:'DM Sans',size:11}},grid:{color:'#F0EDE6'}},x:{ticks:{font:{family:'DM Sans',size:11},maxRotation:45},grid:{display:false}}}}});
+  const tbody=document.getElementById('articles-tbody'); tbody.innerHTML='';
+  data.articles.forEach(a=>{ const pc=a.sentiment==='POSITIVE'?'pill-positive':a.sentiment==='NEGATIVE'?'pill-negative':'pill-neutral';
+    tbody.innerHTML+=`<tr><td>${a.brand}</td><td class="article-title"><a class="article-link" href="${a.url}" target="_blank">${a.title}</a></td>
+      <td><span class="pill ${pc}">${a.sentiment}</span></td><td>${a.confidence}</td><td>${a.source}</td></tr>`; });
+  document.getElementById('results').classList.add('active');
+}
+
+checkAuth();
+</script>
+</body>
+</html>
