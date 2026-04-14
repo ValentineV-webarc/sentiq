@@ -110,11 +110,7 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .kpi-label { font-size: 13px; color: var(--text-secondary); }
 .kpi-bar { margin-top: 10px; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
 .kpi-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.8s ease; }
-.ab-card { background: var(--accent-light); border: 1px solid #C7D7F0; border-radius: var(--radius); padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; display: flex; gap: 2rem; flex-wrap: wrap; align-items: center; }
-.ab-title { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
-.ab-value { font-size: 20px; font-weight: 600; color: var(--text); }
-.ab-sublabel { font-size: 12px; color: var(--text-secondary); }
-.ab-conclusion { margin-left: auto; font-size: 14px; font-weight: 500; color: var(--accent); }
+.ab-note { font-size: 12px; color: var(--text-secondary); margin-bottom: 1.5rem; padding: 0 2px; }
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
 .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); }
 .chart-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 1rem; }
@@ -305,7 +301,7 @@ tr:hover td { background: var(--bg); }
         <div class="results-meta" id="results-meta"></div>
       </div>
       <div class="kpi-grid" id="kpi-grid"></div>
-      <div class="ab-card" id="ab-card" style="display:none"></div>
+      <div class="ab-note" id="ab-card" style="display:none"></div>
       <div class="charts-grid">
         <div class="chart-card">
           <div class="chart-title">Sentiment Distribution</div>
@@ -672,10 +668,11 @@ function renderResults(data) {
     </div>`; });
   const abCard=document.getElementById('ab-card');
   if (data.ab_test) {
-    abCard.style.display='flex';
-    abCard.innerHTML=`<div><div class="ab-title">A/B Test</div><div class="ab-value">${data.ab_test.t_stat}</div><div class="ab-sublabel">T-statistic</div></div>
-      <div><div class="ab-title">P-value</div><div class="ab-value">${data.ab_test.p_value}</div><div class="ab-sublabel">α = 0.05</div></div>
-      <div class="ab-conclusion">${data.ab_test.significant?'Statistically significant difference':'No significant difference at α = 0.05'}</div>`;
+    abCard.style.display='block';
+    const sig = data.ab_test.significant
+      ? 'statistically significant difference detected'
+      : 'no significant difference at α = 0.05';
+    abCard.textContent = `A/B test — t = ${data.ab_test.t_stat}, p = ${data.ab_test.p_value} · ${sig}`;
   } else abCard.style.display='none';
   if (barChart) barChart.destroy();
   barChart=new Chart(document.getElementById('bar-chart').getContext('2d'),{type:'bar',data:{labels:data.brands,
