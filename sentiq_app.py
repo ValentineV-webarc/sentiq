@@ -81,46 +81,56 @@ def load_user(user_id):
 
 # ── Sentiment model ───────────────────────────────────────────────────────────
 
-HF_API_URL = "https://router.huggingface.co/hf-inference/models/distilbert-base-uncased-finetuned-sst-2-english/pipeline/text-classification"
-HF_API_KEY = os.environ.get('HF_API_KEY', '')
+def simple_sentiment(text):
+    """Rule-based sentiment using keyword matching — no external API needed."""
+    if not text or str(text) == 'None':
+        return 'NEUTRAL', 0.5
+
+    text_lower = str(text).lower()
+
+    positive_words = [
+        'good', 'great', 'excellent', 'amazing', 'awesome', 'best', 'win', 'winning',
+        'success', 'successful', 'top', 'leading', 'impressive', 'strong', 'powerful',
+        'innovative', 'advanced', 'faster', 'better', 'improve', 'improved', 'launch',
+        'launches', 'new', 'breakthrough', 'record', 'growth', 'profit', 'rise', 'rises',
+        'positive', 'love', 'perfect', 'outstanding', 'superb', 'brilliant', 'efficient',
+        'reliable', 'recommend', 'recommended', 'worth', 'upgrade', 'upgraded', 'boost',
+        'boosted', 'gains', 'gain', 'surge', 'surges', 'soars', 'soar', 'beats', 'beat',
+        'exceeds', 'exceed', 'outperforms', 'exciting', 'pleased', 'happy', 'satisfied'
+    ]
+
+    negative_words = [
+        'bad', 'worst', 'terrible', 'awful', 'poor', 'weak', 'fail', 'fails', 'failed',
+        'failure', 'problem', 'problems', 'issue', 'issues', 'bug', 'bugs', 'crash',
+        'crashes', 'slow', 'slower', 'delay', 'delayed', 'behind', 'disappointing',
+        'disappointed', 'concern', 'concerns', 'risk', 'risks', 'loss', 'losses', 'drop',
+        'drops', 'drops', 'decline', 'declines', 'fell', 'fall', 'falls', 'miss', 'misses',
+        'missed', 'below', 'struggle', 'struggles', 'struggling', 'lawsuit', 'ban', 'banned',
+        'hack', 'hacked', 'breach', 'vulnerable', 'vulnerability', 'recall', 'recalled',
+        'layoff', 'layoffs', 'cut', 'cuts', 'overheating', 'expensive', 'costly', 'waste'
+    ]
+
+    pos_count = sum(1 for w in positive_words if w in text_lower)
+    neg_count = sum(1 for w in negative_words if w in text_lower)
+
+    total = pos_count + neg_count
+    if total == 0:
+        return 'NEUTRAL', 0.5
+
+    if pos_count > neg_count:
+        score = round(0.5 + (pos_count / total) * 0.5, 3)
+        return 'POSITIVE', min(score, 0.99)
+    elif neg_count > pos_count:
+        score = round(0.5 + (neg_count / total) * 0.5, 3)
+        return 'NEGATIVE', min(score, 0.99)
+    else:
+        return 'NEUTRAL', 0.5
 
 def analyse_sentiment_batch(texts):
-    """Analyse a batch of texts in one API call."""
-    clean = [str(t)[:512] if t and str(t) != 'None' else '' for t in texts]
-    results = [('NEUTRAL', 0.0)] * len(clean)
-    try:
-        headers = {"Authorization": f"Bearer {HF_API_KEY}"} if HF_API_KEY else {}
-        response = http_requests.post(
-            HF_API_URL,
-            headers=headers,
-            json={"inputs": clean},
-            timeout=60
-        )
-        if response.status_code == 200:
-            data = response.json()
-            # data is a list of lists, one per input
-            if isinstance(data, list):
-                for i, item in enumerate(data):
-                    if isinstance(item, list) and len(item) > 0:
-                        best = max(item, key=lambda x: x['score'])
-                        label = best['label'].upper()
-                        if label not in ['POSITIVE', 'NEGATIVE']:
-                            label = 'NEUTRAL'
-                        results[i] = (label, round(best['score'], 3))
-                    elif isinstance(item, dict):
-                        label = item.get('label','NEUTRAL').upper()
-                        if label not in ['POSITIVE', 'NEGATIVE']:
-                            label = 'NEUTRAL'
-                        results[i] = (label, round(item.get('score', 0.0), 3))
-    except Exception as e:
-        print(f"[HF] Batch error: {e}")
-    return results
+    return [simple_sentiment(t) for t in texts]
 
 def analyse_sentiment(text):
-    if not text or str(text) == 'None':
-        return 'NEUTRAL', 0.0
-    result = analyse_sentiment_batch([text])
-    return result[0]
+    return simple_sentiment(text)
 
 def run_sentiment_for_brands(brands, limit=50):
     newsapi = NewsApiClient(api_key=API_KEY)
