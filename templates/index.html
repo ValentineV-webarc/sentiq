@@ -122,16 +122,16 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .articles-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .articles-header { font-size: 14px; font-weight: 600; color: var(--text); padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { background: var(--bg); padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
-td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th { background: var(--bg); padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--bg); }
-.pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+.pill { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 500; letter-spacing: 0.01em; }
 .pill-positive { background: var(--positive-bg); color: var(--positive); }
 .pill-negative { background: var(--negative-bg); color: var(--negative); }
 .pill-neutral  { background: #FEF9EC; color: var(--neutral); }
 .article-title { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.article-link { color: var(--text); text-decoration: none; }
+.article-link { color: var(--text); text-decoration: none; font-size: 13px; }
 .article-link:hover { color: var(--accent); }
 
 /* AUTH MODAL */
@@ -686,9 +686,17 @@ function renderResults(data) {
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'DM Sans',size:12}}}},
       scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:'DM Sans',size:11}},grid:{color:'#F0EDE6'}},x:{ticks:{font:{family:'DM Sans',size:11},maxRotation:45},grid:{display:false}}}}});
   const tbody=document.getElementById('articles-tbody'); tbody.innerHTML='';
-  data.articles.forEach(a=>{ const pc=a.sentiment==='POSITIVE'?'pill-positive':a.sentiment==='NEGATIVE'?'pill-negative':'pill-neutral';
-    tbody.innerHTML+=`<tr><td>${a.brand}</td><td class="article-title"><a class="article-link" href="${a.url}" target="_blank">${a.title}</a></td>
-      <td><span class="pill ${pc}">${a.sentiment}</span></td><td>${a.confidence}</td><td>${a.source}</td></tr>`; });
+  data.articles.forEach(a=>{
+    const s = a.sentiment || 'Neutral';
+    const label = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    const pc = s==='POSITIVE'?'pill-positive':s==='NEGATIVE'?'pill-negative':'pill-neutral';
+    tbody.innerHTML+=`<tr>
+      <td style="font-weight:500">${a.brand}</td>
+      <td class="article-title"><a class="article-link" href="${a.url}" target="_blank">${a.title}</a></td>
+      <td><span class="pill ${pc}">${label}</span></td>
+      <td style="color:var(--text-secondary)">${a.confidence}</td>
+      <td style="color:var(--text-secondary)">${a.source}</td>
+    </tr>`; });
   document.getElementById('results').classList.add('active');
 }
 
