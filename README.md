@@ -1,136 +1,155 @@
 # SentIQ
 
-SentIQ is a brand sentiment monitoring pipeline. It collects live news articles about a target brand, classifies each article as positive or negative using an AI model, runs a statistical comparison against a competitor, and outputs results to a Power BI dashboard.
+Brand sentiment monitoring from live news. Compare how the media covers different brands, track sentiment over time, and get alerted when things shift.
 
-The current demo tracks **MediaTek vs Snapdragon**. To monitor a different brand, update the `brands` list in the notebook — nothing else needs to change.
-
----
-
-## Table of Contents
-
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Setup](#setup)
-- [Running the Pipeline](#running-the-pipeline)
-- [Dashboard](#dashboard)
-- [Configuration](#configuration)
-- [Known Limitations](#known-limitations)
-- [Contributing](#contributing)
+**Live:** https://sentiq-production-251e.up.railway.app
 
 ---
 
-## Project Structure
+## Overview
+
+SentIQ pulls news articles from NewsAPI, classifies each one as positive/negative/neutral using a keyword-based NLP engine, then surfaces the results through a dashboard. Supports multi-brand comparison, statistical A/B testing (t-test + p-value), trend charts, PDF/CSV export, user accounts, and email alerting.
+
+Built with Flask on the backend and vanilla JS on the frontend — no frontend framework, no build step.
+
+---
+
+## Features
+
+- Compare up to 6 brands side by side
+- Sentiment distribution + day-by-day trend chart
+- Statistical significance test between two brands
+- One-click PDF report and CSV export
+- User accounts with persistent search history
+- Email alerts when sentiment drops below a threshold
+- Full password reset flow via email
+
+---
+
+## Tech
+
+| | |
+|---|---|
+| Backend | Python 3, Flask |
+| Database | SQLite via SQLAlchemy |
+| Auth | Flask-Login, Werkzeug |
+| Sentiment | Keyword NLP (no external API) |
+| News | NewsAPI |
+| Email | Flask-Mail + Gmail SMTP |
+| Scheduler | APScheduler |
+| PDF | ReportLab |
+| Charts | Chart.js |
+| Hosting | Railway |
+
+---
+
+## Local setup
+
+**Requirements:** Python 3.9+, a NewsAPI key, Gmail with App Password enabled
+
+```bash
+git clone https://github.com/ValentineV-webarc/sentiq.git
+cd sentiq
+pip install -r requirements.txt
+```
+
+Set your credentials in `sentiq_app.py`:
+
+```python
+API_KEY = os.environ.get('NEWS_API_KEY', '<your-newsapi-key>')
+app.config['MAIL_USERNAME'] = '<your-gmail>'
+app.config['MAIL_PASSWORD'] = '<your-app-password>'  # not your Gmail login password
+```
+
+> To get a Gmail App Password: Google Account → Security → 2-Step Verification → App passwords.
+
+```bash
+python sentiq_app.py
+# → http://localhost:5000
+```
+
+DB is created automatically on first run.
+
+---
+
+## Project layout
 
 ```
 sentiq/
-├── sentiq_data_collection.ipynb   # Main pipeline — run this in Databricks
-├── SentIQ_dashboard.pbix          # Power BI dashboard file
-└── README.md
+├── sentiq_app.py     # all backend logic — routes, models, sentiment, email, PDF
+├── requirements.txt
+├── Procfile          # gunicorn config for Railway
+└── templates/
+    └── index.html    # full frontend — HTML + CSS + JS in one file
 ```
 
 ---
 
-## Prerequisites
+## Environment variables
 
-Before you start, make sure you have the following:
+Used in production. Fallback defaults are set in `sentiq_app.py` for local dev.
 
-| Tool | Where to get it | Notes |
-|---|---|---|
-| Databricks account | [community.cloud.databricks.com](https://community.cloud.databricks.com) | Free Community Edition is sufficient |
-| NewsAPI key | [newsapi.org/register](https://newsapi.org/register) | Free tier: 100 articles per query |
-| Power BI Desktop | [powerbi.microsoft.com/desktop](https://powerbi.microsoft.com/desktop) | Free download |
-
----
-
-## Setup
-
-**1. Clone the repository**
-```bash
-git clone https://github.com/ValentineV-webarc/sentiq.git
-```
-
-**2. Import the notebook into Databricks**
-- Go to **Workspace** → click the three dots (**...**) next to your username
-- Select **Import** → upload `sentiq_data_collection.ipynb`
-
-**3. Add your NewsAPI key**
-
-Open the notebook and find this line in the Data Collection cell:
-```python
-API_KEY = 'YOUR_NEWSAPI_KEY_HERE'
-```
-Replace it with your actual key. Do not commit your key to GitHub.
-
-**4. Install dependencies**
-
-The first cell of the notebook handles this automatically:
-```python
-%pip install newsapi-python transformers torch
-```
-
----
-
-## Running the Pipeline
-
-Run all cells in order using **Run → Run All** in Databricks.
-
-The pipeline does the following in sequence:
-
-| Step | What happens |
+| Variable | Description |
 |---|---|
-| Data Collection | Fetches up to 100 articles per brand from NewsAPI |
-| Delta Storage | Saves raw articles to a Databricks Delta table (`sentiq_raw_news`) |
-| SQL Analysis | Queries article counts, sources, and date range per brand |
-| Sentiment Scoring | Runs each article through DistilBERT, labels as POSITIVE or NEGATIVE |
-| KPI Summary | Calculates positive/negative percentage per brand |
-| A/B Test | Runs an independent t-test to check if sentiment difference is significant |
-| Visualisation | Plots sentiment distribution and daily trend |
-| Export | Saves three CSV files to your Databricks workspace for Power BI |
-
-**Expected output files** (saved to `/Workspace/Users/<your-email>/`):
-- `sentiq_sentiment_results.csv` — full article-level data with sentiment labels
-- `sentiq_summary.csv` — aggregated sentiment counts and percentages per brand
-- `sentiq_trend_pct.csv` — daily average sentiment score per brand (as percentage)
+| `SECRET_KEY` | Flask session secret |
+| `NEWS_API_KEY` | NewsAPI key |
+| `MAIL_USERNAME` | Gmail address used to send emails |
+| `MAIL_PASSWORD` | Gmail App Password |
+| `APP_URL` | Public app URL — used in password reset links |
 
 ---
 
-## Dashboard
+## Deploying
 
-Open `SentIQ_dashboard.pbix` in Power BI Desktop.
+Deployed on Railway. Auto-deploys on push to `main`.
 
-If loading for the first time, go to **Home → Get data → Text/CSV** and load each of the three CSV files exported above. The dashboard contains:
-
-- **Sentiment trend** — daily positive sentiment rate over time per brand
-- **Sentiment distribution** — positive vs negative article count per brand
-- **Article table** — raw headlines with brand, sentiment label, and source
-
-> **Note:** When loading CSVs in Power BI, set File Origin to `1252: Western European (Windows)` to ensure decimal values are read correctly.
-
----
-
-## Configuration
-
-To monitor different brands, update this line in the notebook:
-
-```python
-brands = ['MediaTek', 'Snapdragon']
+```
+1. Push to GitHub
+2. New project on railway.app → Deploy from GitHub repo
+3. Add environment variables (see above)
+4. Set APP_URL to your Railway domain after first deploy
 ```
 
-Any two brand names work. The rest of the pipeline — sentiment scoring, A/B test, visualisation, and export — runs without any other changes.
+---
+
+## API
+
+```
+# Analysis
+POST  /api/analyse              { brands: [...], limit: int }
+POST  /api/export/pdf           { ...analyse response }
+
+# Auth
+POST  /auth/register            { name, email, password }
+POST  /auth/login               { email, password }
+POST  /auth/logout
+GET   /auth/me
+POST  /auth/forgot-password     { email }
+POST  /auth/reset-password      { token, password }
+
+# History (auth required)
+GET    /api/history
+DELETE /api/history/:id
+POST   /api/history/:id/alert   { alert_email, threshold }
+DELETE /api/history/:id/alert
+POST   /api/history/:id/alert/test
+
+# Debug
+GET   /api/test                 checks NewsAPI + sentiment engine
+```
 
 ---
 
-## Known Limitations
+## Notes
 
-- **Data volume:** NewsAPI free tier caps at 100 articles per brand per request and covers only the past 30 days. For longer time windows or higher volume, a paid NewsAPI plan or additional data sources (Reddit API, financial news feeds) would be needed.
-- **Sentiment model:** DistilBERT is a general-purpose model trained on movie reviews. It performs reasonably on tech news but a domain-specific fine-tuned model would improve accuracy.
-- **A/B test scope:** The t-test compares overall positive rates between brands. It does not account for time effects or source bias. A time-sliced experiment (e.g. sentiment before vs after a product launch) would enable stronger causal conclusions.
+- NewsAPI free tier is developer-only — production traffic may hit rate limits
+- Alerts run on a 1-hour scheduler, so first trigger can take up to an hour
+- Trend chart needs articles from multiple days to be meaningful — use limit 100 for better coverage
+- Sentiment accuracy is lower than a fine-tuned model but good enough for brand-level comparisons at scale
 
 ---
 
-## Contributing
+## Author
 
-1. Create a new branch from `main`
-2. Make your changes
-3. Open a pull request with a clear description of what you changed and why
-4. Do not commit API keys or credentials — use environment variables or Databricks secrets in production
+Valentine Virgo
+https://github.com/ValentineV-webarc
