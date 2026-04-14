@@ -496,7 +496,7 @@ def test_alert(history_id):
                 <h2 style="color:white;margin:0;font-size:18px">SentIQ</h2>
               </div>
               <div style="border:1px solid #E4E1DA;border-top:none;padding:24px 28px;border-radius:0 0 8px 8px">
-                <h3 style="margin:0 0 8px">✅ Test alert successful!</h3>
+                <h3 style="margin:0 0 8px">Test alert successful!</h3>
                 <p style="color:#6B6860;font-size:14px;margin:0">
                   Your alert for <strong>{', '.join(json.loads(h.brands))}</strong> is configured.<br>
                   You'll be notified when positive sentiment drops below <strong>{h.alert.threshold:.0f}%</strong>.
@@ -700,3 +700,31 @@ def export_pdf():
 
 
 
+
+@app.route('/api/gemini-test')
+def gemini_test():
+    if not GEMINI_API_KEY:
+        return jsonify({'error': 'GEMINI_API_KEY not set', 'key_set': False})
+    try:
+        response = http_requests.post(
+            f"{GEMINI_API_URL}?key={GEMINI_API_KEY}",
+            json={"contents": [{"parts": [{"text": "Say hello in one sentence."}]}]},
+            timeout=20
+        )
+        return jsonify({
+            'status': response.status_code,
+            'key_prefix': GEMINI_API_KEY[:8],
+            'response': response.json() if response.status_code == 200 else response.text[:300]
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        print("Database ready.")
+    scheduler.start()
+    print("Alert scheduler started.")
+    print("Starting SentIQ — open http://localhost:5000")
+    app.run(debug=False, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
