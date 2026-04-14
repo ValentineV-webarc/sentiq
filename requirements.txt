@@ -10,4 +10,3 @@ pandas
 reportlab
 apscheduler
 gunicorn
-
