@@ -7,6 +7,7 @@ Brand sentiment monitoring from live news. Compare how the media covers differen
 ---
 
 ## Overview
+![SentIQ Dashboard](dashboard.png)
 
 SentIQ pulls news articles from NewsAPI, classifies each one as positive/negative/neutral using a keyword-based NLP engine, then surfaces the results through a dashboard. Supports multi-brand comparison, statistical A/B testing (t-test + p-value), trend charts, PDF/CSV export, user accounts, and email alerting.
 
