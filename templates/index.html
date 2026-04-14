@@ -590,15 +590,22 @@ async function runAnalysis() {
     const res  = await fetch('/api/analyse', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({brands,limit}) });
     const data = await res.json();
     clearInterval(msgInterval);
-    if (data.error) {
+    console.log('API response:', JSON.stringify(data).slice(0, 500));
+    if (!res.ok || data.error) {
       document.getElementById('loading-state').classList.remove('active');
       document.getElementById('results').classList.add('active');
-      document.getElementById('error-banner').textContent = data.error;
+      document.getElementById('error-banner').textContent = data.error || 'Server error: ' + res.status;
       document.getElementById('error-banner').classList.add('active');
       return;
     }
-    lastData = data;
-    renderResults(data);
+    try {
+      lastData = data;
+      renderResults(data);
+    } catch(renderErr) {
+      console.error('Render error:', renderErr);
+      document.getElementById('error-banner').textContent = 'Render error: ' + renderErr.message;
+      document.getElementById('error-banner').classList.add('active');
+    }
     document.getElementById('csv-btn').disabled = false;
     document.getElementById('pdf-btn').disabled = false;
     if (currentUser) loadHistory();
