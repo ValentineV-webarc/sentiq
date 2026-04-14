@@ -110,7 +110,20 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .kpi-label { font-size: 13px; color: var(--text-secondary); }
 .kpi-bar { margin-top: 10px; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
 .kpi-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.8s ease; }
-.ab-note { font-size: 12px; color: var(--text-secondary); margin-bottom: 1.5rem; padding: 0 2px; }
+.insight-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow);
+  display: none;
+}
+.insight-card.active { display: block; }
+.insight-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.insight-text { font-size: 14px; color: var(--text); line-height: 1.7; }
+.insight-loading { font-size: 13px; color: var(--text-secondary); font-style: italic; }
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
 .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); }
 .chart-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 1rem; }
@@ -302,6 +315,10 @@ tr:hover td { background: var(--bg); }
       </div>
       <div class="kpi-grid" id="kpi-grid"></div>
       <div class="ab-note" id="ab-card" style="display:none"></div>
+      <div class="insight-card" id="insight-card">
+        <div class="insight-label">AI Insight</div>
+        <div class="insight-text" id="insight-text"></div>
+      </div>
       <div class="charts-grid">
         <div class="chart-card">
           <div class="chart-title">Sentiment Distribution</div>
@@ -658,6 +675,16 @@ async function exportPDF() {
 function renderResults(data) {
   document.getElementById('results-title').textContent = data.brands.join(' vs ');
   document.getElementById('results-meta').textContent  = `${data.total_articles} articles analysed`;
+
+  // AI Insight
+  const insightCard = document.getElementById('insight-card');
+  const insightText = document.getElementById('insight-text');
+  if (data.insight) {
+    insightCard.classList.add('active');
+    insightText.textContent = data.insight;
+  } else {
+    insightCard.classList.remove('active');
+  }
   const grid=document.getElementById('kpi-grid'); grid.innerHTML='';
   data.brands.forEach((brand,i)=>{ const kpi=data.kpis[brand]; grid.innerHTML+=`
     <div class="kpi-card">
