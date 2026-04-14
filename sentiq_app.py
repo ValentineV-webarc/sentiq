@@ -264,6 +264,7 @@ def check_all_alerts():
 
 def generate_insights(brands, kpis, articles):
     """Use Gemini Flash to generate a natural language insight summary."""
+    print(f"[Gemini] Key set: {bool(GEMINI_API_KEY)}, Key prefix: {GEMINI_API_KEY[:8] if GEMINI_API_KEY else 'NONE'}")
     if not GEMINI_API_KEY:
         return None
     try:
@@ -292,9 +293,12 @@ Write your insight summary:"""
             json={"contents": [{"parts": [{"text": prompt}]}]},
             timeout=20
         )
+        print(f"[Gemini] Response status: {response.status_code}")
+        print(f"[Gemini] Response body: {response.text[:300]}")
         if response.status_code == 200:
             data = response.json()
             text = data['candidates'][0]['content']['parts'][0]['text']
+            print(f"[Gemini] Insight generated: {text[:100]}")
             return text.strip()
         return None
     except Exception as e:
