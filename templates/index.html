@@ -131,6 +131,10 @@ tr:hover td { background: var(--bg); }
 .dot-positive { background: #16A34A; }
 .dot-negative { background: #DC2626; }
 .dot-neutral  { background: #D97706; }
+.sentiment-label { font-size: 13px; font-weight: 500; }
+.label-positive { color: #16A34A; }
+.label-negative { color: #DC2626; }
+.label-neutral  { color: #D97706; }
 .article-title { max-width: 420px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .article-link { color: var(--text); text-decoration: none; font-size: 13px; }
 .article-link:hover { color: var(--accent); }
@@ -690,11 +694,12 @@ function renderResults(data) {
   data.articles.forEach(a=>{
     const s = a.sentiment || 'Neutral';
     const label = s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-    const dot = s==='POSITIVE'?'dot-positive':s==='NEGATIVE'?'dot-negative':'dot-neutral';
+    const cls = s==='POSITIVE'?'label-positive':s==='NEGATIVE'?'label-negative':'label-neutral';
+    const arrow = s==='POSITIVE'?' ↑':s==='NEGATIVE'?' ↓':'';
     tbody.innerHTML+=`<tr>
       <td style="font-weight:500">${a.brand}</td>
       <td class="article-title"><a class="article-link" href="${a.url}" target="_blank">${a.title}</a></td>
-      <td><span class="sentiment-badge"><span class="sentiment-dot ${dot}"></span>${label}</span></td>
+      <td><span class="sentiment-label ${cls}">${label}</span></td>
       <td style="color:var(--text-secondary)">${a.confidence}</td>
       <td style="color:var(--text-secondary)">${a.source}</td>
     </tr>`; });
