@@ -4,10 +4,10 @@ flask-login
 flask-mail
 werkzeug
 newsapi-python
-transformers
-torch --index-url https://download.pytorch.org/whl/cpu
+requests
 scipy
 pandas
 reportlab
 apscheduler
 gunicorn
+
