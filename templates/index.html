@@ -723,12 +723,77 @@ function renderResults(data) {
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'DM Sans',size:12}}}},
       scales:{y:{max:100,ticks:{callback:v=>v+'%',font:{family:'DM Sans',size:11}},grid:{color:'#F0EDE6'}},x:{ticks:{font:{family:'DM Sans',size:12}},grid:{display:false}}}}});
   if (lineChart) lineChart.destroy();
-  const allDates=[...new Set(data.brands.flatMap(b=>data.trend[b]?.dates||[]))].sort();
-  lineChart=new Chart(document.getElementById('line-chart').getContext('2d'),{type:'line',
-    data:{labels:allDates,datasets:data.brands.map((brand,i)=>({label:brand,data:data.trend[brand]?.scores.map(s=>+(s*100).toFixed(1))||[],
-      borderColor:COLORS[i],backgroundColor:'transparent',pointBackgroundColor:COLORS[i],pointRadius:4,tension:0.3,borderWidth:2}))},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'DM Sans',size:12}}}},
-      scales:{y:{min:0,max:100,ticks:{callback:v=>v+'%',font:{family:'DM Sans',size:11}},grid:{color:'#F0EDE6'}},x:{ticks:{font:{family:'DM Sans',size:11},maxRotation:45},grid:{display:false}}}}});
+  // Build one sorted x-axis from the union of every brand's dates, then plot
+  // each brand's scores as values pinned to their ACTUAL date (null = gap).
+  // `scores` is the 3-day weighted rolling average from the backend; `raw_scores`
+  // and `counts` are per-day ground-truth and come along for the tooltip.
+  const allDates = [...new Set(data.brands.flatMap(b => data.trend[b]?.dates || []))].sort();
+  const lineDatasets = data.brands.map((brand, i) => {
+    const t = data.trend[brand] || { dates: [], scores: [], raw_scores: [], counts: [] };
+    const byDate = new Map(
+      t.dates.map((d, j) => [d, {
+        smoothed: +(t.scores[j] * 100).toFixed(1),
+        raw:      t.raw_scores ? +(t.raw_scores[j] * 100).toFixed(1) : null,
+        count:    t.counts     ?  t.counts[j]                         : null
+      }])
+    );
+    const points = allDates.map(d => {
+      const r = byDate.get(d);
+      return r ? r.smoothed : null;          // null = no articles for this brand that day
+    });
+    const meta = allDates.map(d => byDate.get(d) || null);  // parallel array for tooltip
+    return {
+      label: brand,
+      data: points,
+      _meta: meta,                           // stashed for the tooltip callback below
+      borderColor: COLORS[i],
+      backgroundColor: 'transparent',
+      pointBackgroundColor: COLORS[i],
+      pointRadius: 4,
+      pointHoverRadius: 5,
+      tension: 0.3,
+      borderWidth: 2,
+      spanGaps: true
+    };
+  });
+  lineChart = new Chart(document.getElementById('line-chart').getContext('2d'), {
+    type: 'line',
+    data: { labels: allDates, datasets: lineDatasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { family: 'DM Sans', size: 12 } } },
+        tooltip: {
+          // One consistent format on hover:
+          //   Apr 14, 2026
+          //   MediaTek: 68% positive · 12 articles
+          //   Snapdragon: 55% positive · 8 articles
+          mode: 'index',        // show every brand's value at the hovered date
+          intersect: false,     // hover anywhere on the column, not just on a dot
+          callbacks: {
+            title: items => {
+              if (!items || !items.length) return '';
+              const parts = String(items[0].label).split('-');
+              if (parts.length !== 3) return items[0].label;
+              const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              return `${months[+parts[1] - 1]} ${+parts[2]}, ${parts[0]}`;
+            },
+            label: ctx => {
+              const meta = ctx.dataset._meta ? ctx.dataset._meta[ctx.dataIndex] : null;
+              if (!meta) return `${ctx.dataset.label}: no articles`;
+              const n = meta.count;
+              const articleStr = n === 1 ? '1 article' : `${n} articles`;
+              return `${ctx.dataset.label}: ${meta.smoothed}% positive · ${articleStr}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: { family: 'DM Sans', size: 11 } }, grid: { color: '#F0EDE6' } },
+        x: { ticks: { font: { family: 'DM Sans', size: 11 }, maxRotation: 45 }, grid: { display: false } }
+      }
+    }
+  });
   const tbody=document.getElementById('articles-tbody'); tbody.innerHTML='';
   data.articles.forEach(a=>{
     const s = a.sentiment || 'Neutral';
