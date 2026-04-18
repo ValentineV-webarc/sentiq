@@ -262,30 +262,88 @@ def check_all_alerts():
                     alert.last_triggered = datetime.utcnow()
                     db.session.commit()
 
-def generate_insights(brands, kpis, articles):
-    """Use Groq LLaMA to generate a natural language insight summary."""
+def generate_insights(brands, kpis, articles, trend_data=None, ab_test=None):
+    """Use Groq LLaMA to generate a clear, chart-summarising insight.
+
+    The goal is a short plain-English verdict that reads the dashboard for the
+    user: who's ahead, by how much, whether the gap is meaningful, and which
+    way each brand is trending — not a list of article titles.
+    """
     if not GROQ_API_KEY:
         return None
     try:
-        # Build context from top articles
-        article_lines = []
-        for a in articles[:20]:
-            article_lines.append(f"- [{a.get('brand')}] {a.get('title')} ({a.get('sentiment', '').lower()})")
-
+        # 1) Brand headline stats (from the bar chart)
         brand_stats = []
         for brand in brands:
             k = kpis.get(brand, {})
-            brand_stats.append(f"{brand}: {k.get('positive', 0):.1f}% positive, {k.get('negative', 0):.1f}% negative ({k.get('total', 0)} articles)")
+            brand_stats.append(
+                f"{brand}: {k.get('positive', 0):.1f}% positive · "
+                f"{k.get('negative', 0):.1f}% negative "
+                f"({k.get('total', 0)} articles)"
+            )
 
-        prompt = f"""You are a brand intelligence analyst. Based on the following news sentiment data, write a concise 2-3 sentence insight summary explaining what is driving the sentiment for each brand. Be specific, factual, and reference the article topics where relevant. Write in a professional but natural tone — no bullet points, just flowing prose.
+        # 2) Quick read of each brand's trend line (from the time-series chart)
+        trend_lines = []
+        if trend_data:
+            for brand in brands:
+                t = trend_data.get(brand, {})
+                scores = t.get('scores', []) or []
+                dates  = t.get('dates', [])  or []
+                if len(scores) >= 2:
+                    first, last = scores[0] * 100, scores[-1] * 100
+                    hi, lo = max(scores) * 100, min(scores) * 100
+                    delta = last - first
+                    if delta >= 10:    direction = "rising"
+                    elif delta <= -10: direction = "falling"
+                    elif hi - lo >= 25: direction = "volatile"
+                    else:              direction = "flat"
+                    trend_lines.append(
+                        f"{brand}: {direction} — started {first:.0f}%, ended {last:.0f}% "
+                        f"(range {lo:.0f}%–{hi:.0f}% across {len(scores)} days, {dates[0]} → {dates[-1]})"
+                    )
+                elif len(scores) == 1:
+                    trend_lines.append(f"{brand}: only one day of data ({dates[0]}) at {scores[0]*100:.0f}% positive")
 
-Brand sentiment overview:
+        # 3) Statistical test verdict (plain English)
+        ab_line = ""
+        if ab_test:
+            if ab_test.get('significant'):
+                ab_line = f"A/B t-test p = {ab_test.get('p_value')} — the gap IS statistically meaningful."
+            else:
+                ab_line = f"A/B t-test p = {ab_test.get('p_value')} — the gap is NOT statistically meaningful, so treat the brands as roughly tied."
+
+        # 4) A small article sample — context only, never to be listed
+        article_lines = []
+        for a in articles[:10]:
+            article_lines.append(f"- [{a.get('brand')}] {a.get('title')} ({a.get('sentiment','').lower()})")
+
+        prompt = f"""You are writing a short plain-English summary that sits above a sentiment-comparison dashboard. The reader has just glanced at two charts:
+  (1) a bar chart of positive vs negative sentiment per brand
+  (2) a line chart of each brand's daily positive-sentiment rate over time
+
+Your job is to summarise WHAT THE CHARTS SHOW — a headline verdict, not a roll-call of articles.
+
+Write exactly 3–4 short sentences, flowing prose, no bullets, no headers, no markdown. Follow this order:
+  1. Lead with the verdict: which brand is ahead on positive sentiment and by how many percentage points. If within ~3 points, say "roughly tied".
+  2. State whether the gap is meaningful, using the statistical test result in plain words (don't quote t-values).
+  3. Describe the trend line for each brand — rising, falling, flat, or volatile — and anchor it with start/end numbers.
+  4. Close with ONE sentence naming a likely theme behind the sentiment (drawn loosely from the article examples). Do NOT list article titles.
+
+Tone: punchy, jargon-free, confident. A busy reader must grasp the dashboard in under 15 seconds from your summary alone. Never open with "Our analysis reveals", "This report shows", or any similar filler — start with the verdict itself.
+
+— Brand headlines (bar chart) —
 {chr(10).join(brand_stats)}
 
-Sample article headlines:
+— Trend over time (line chart) —
+{chr(10).join(trend_lines) if trend_lines else "(not enough time-series data)"}
+
+— Statistical test —
+{ab_line or "(not available)"}
+
+— Article examples (for theme context only; do NOT list them) —
 {chr(10).join(article_lines)}
 
-Write your insight summary:"""
+Write the summary now:"""
 
         response = http_requests.post(
             GROQ_API_URL,
@@ -296,8 +354,8 @@ Write your insight summary:"""
             json={
                 "model": "llama-3.1-8b-instant",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 200,
-                "temperature": 0.7
+                "max_tokens": 220,
+                "temperature": 0.5
             },
             timeout=20
         )
@@ -502,7 +560,7 @@ def test_alert(history_id):
                 <h2 style="color:white;margin:0;font-size:18px">SentIQ</h2>
               </div>
               <div style="border:1px solid #E4E1DA;border-top:none;padding:24px 28px;border-radius:0 0 8px 8px">
-                <h3 style="margin:0 0 8px"> Test alert successful!</h3>
+                <h3 style="margin:0 0 8px">✅ Test alert successful!</h3>
                 <p style="color:#6B6860;font-size:14px;margin:0">
                   Your alert for <strong>{', '.join(json.loads(h.brands))}</strong> is configured.<br>
                   You'll be notified when positive sentiment drops below <strong>{h.alert.threshold:.0f}%</strong>.
@@ -601,8 +659,10 @@ def analyse():
             db.session.add(h)
             db.session.commit()
 
-    # Generate LLM insight
-    insight = generate_insights(brands, kpis, top_articles)
+    # Generate LLM insight — pass the trend + A/B result so the summary
+    # can actually read the charts, not just rattle off article titles.
+    insight = generate_insights(brands, kpis, top_articles,
+                                trend_data=trend_data, ab_test=ab_test)
 
     return jsonify({'total_articles': len(df), 'brands': brands, 'kpis': kpis,
                     'ab_test': ab_test, 'trend': trend_data, 'articles': top_articles,
