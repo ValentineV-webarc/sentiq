@@ -390,23 +390,23 @@ def generate_insights(brands, kpis, articles, trend_data=None, ab_test=None):
             article_lines.append(f"- [{a.get('brand')}] {a.get('title')} ({a.get('sentiment','').lower()})")
 
         prompt = f"""You are writing a short plain-English summary that sits above a sentiment-comparison dashboard. The reader has just glanced at two charts:
-  (1) a bar chart of positive vs negative sentiment per brand
-  (2) a line chart of each brand's daily positive-sentiment rate over time
+  (1) a bar chart of positive vs negative sentiment per brand (overall share across the whole period)
+  (2) a stacked bar chart of daily coverage per brand, broken down into positive / neutral / negative article counts
 
 Your job is to summarise WHAT THE CHARTS SHOW — a headline verdict, not a roll-call of articles.
 
 Write exactly 3–4 short sentences, flowing prose, no bullets, no headers, no markdown. Follow this order:
   1. Lead with the verdict: which brand is ahead on positive sentiment and by how many percentage points. If within ~3 points, say "roughly tied".
   2. State whether the gap is meaningful, using the statistical test result in plain words (don't quote t-values).
-  3. Describe the trend line for each brand using the EXACT direction word given in the "Trend over time" section below (rising, falling, flat, or volatile) — do NOT substitute your own adjectives. Anchor the description with start and end numbers. Never call a trend "volatile", "dramatic", or "significant strides" unless the data block below literally says "volatile".
+  3. Describe the daily pattern for each brand using the EXACT direction word given in the "Trend over time" section below (rising, falling, flat, or volatile) — do NOT substitute your own adjectives. Anchor the description with start and end numbers. Never call a pattern "volatile", "dramatic", or "significant strides" unless the data block below literally says "volatile".
   4. Close with ONE sentence naming a likely theme behind the sentiment (drawn loosely from the article examples). Do NOT list article titles.
 
 Tone: punchy, jargon-free, confident. A busy reader must grasp the dashboard in under 15 seconds from your summary alone. Never open with "Our analysis reveals", "This report shows", or any similar filler — start with the verdict itself.
 
-— Brand headlines (bar chart) —
+— Brand headlines (overall bar chart) —
 {chr(10).join(brand_stats)}
 
-— Trend over time (line chart) —
+— Trend over time (daily coverage chart) —
 {chr(10).join(trend_lines) if trend_lines else "(not enough time-series data)"}
 
 — Statistical test —
@@ -632,7 +632,7 @@ def test_alert(history_id):
                 <h2 style="color:white;margin:0;font-size:18px">SentIQ</h2>
               </div>
               <div style="border:1px solid #E4E1DA;border-top:none;padding:24px 28px;border-radius:0 0 8px 8px">
-                <h3 style="margin:0 0 8px">Test alert successful!</h3>
+                <h3 style="margin:0 0 8px">✅ Test alert successful!</h3>
                 <p style="color:#6B6860;font-size:14px;margin:0">
                   Your alert for <strong>{', '.join(json.loads(h.brands))}</strong> is configured.<br>
                   You'll be notified when positive sentiment drops below <strong>{h.alert.threshold:.0f}%</strong>.
@@ -777,15 +777,25 @@ def analyse():
 
     df['date'] = pd.to_datetime(df['published_at']).dt.strftime('%Y-%m-%d')
 
-    # Daily stats per (brand, date): raw positive-rate + article count.
-    # The raw daily rate swings wildly on days with only 1–2 articles, which
-    # used to make the trend line look like sentiment had "crashed". Below we
-    # smooth it with a 3-day weighted rolling mean so each plotted point
-    # aggregates roughly 3 days' worth of evidence.
+    # Daily stats per (brand, date): raw positive-rate, article count, and a
+    # per-sentiment breakdown. The breakdown (pos/neu/neg counts per day) is
+    # what the frontend stacked bar chart renders — each bar is a single day,
+    # segmented by sentiment category.
     daily = df.groupby(['date', 'brand']).agg(
         raw_score=('sentiment_score', 'mean'),
         count=('sentiment_score', 'size')
     ).reset_index()
+
+    # Pivot sentiment counts: one row per (date, brand), columns = sentiment cats.
+    cat_counts = (df.groupby(['date', 'brand', 'sentiment']).size()
+                    .unstack(fill_value=0)
+                    .reset_index())
+    # Make sure all three columns exist even if one sentiment was absent
+    for col in ('POSITIVE', 'NEUTRAL', 'NEGATIVE'):
+        if col not in cat_counts.columns:
+            cat_counts[col] = 0
+    daily = daily.merge(cat_counts[['date','brand','POSITIVE','NEUTRAL','NEGATIVE']],
+                        on=['date','brand'], how='left').fillna(0)
 
     # Per-brand: sort by date, then do a 3-day centered rolling mean weighted
     # by article counts — i.e. sum(score * count) / sum(count) over the window.
@@ -834,8 +844,12 @@ def analyse():
         trend_data[brand] = {
             'dates':      t['date'].tolist(),
             'scores':     t['sentiment_score'].tolist(),   # smoothed (3-day weighted)
-            'raw_scores': t['raw_score'].round(3).tolist(), # raw daily rate, for tooltip
-            'counts':     t['count'].astype(int).tolist()   # articles that day, for tooltip
+            'raw_scores': t['raw_score'].round(3).tolist(), # raw daily rate, kept for backward compat
+            'counts':     t['count'].astype(int).tolist(),  # total articles per day
+            # Per-day category counts — drive the stacked bar chart
+            'pos_counts': t['POSITIVE'].astype(int).tolist(),
+            'neu_counts': t['NEUTRAL'].astype(int).tolist(),
+            'neg_counts': t['NEGATIVE'].astype(int).tolist()
         }
 
     # Auto-save to history if logged in
