@@ -39,8 +39,8 @@ mail          = Mail(app)
 
 API_KEY = os.environ.get('NEWS_API_KEY', '9a0f711450fd4bffb78ef899c2c85564')
 APP_URL = os.environ.get('APP_URL', 'http://localhost:5000')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -705,18 +705,25 @@ def export_pdf():
 
 @app.route('/api/gemini-test')
 def gemini_test():
-    if not GEMINI_API_KEY:
-        return jsonify({'error': 'GEMINI_API_KEY not set', 'key_set': False})
+    if not GROQ_API_KEY:
+        return jsonify({'error': 'GROQ_API_KEY not set', 'key_set': False})
     try:
         response = http_requests.post(
-            f"{GEMINI_API_URL}?key={GEMINI_API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"text": "Say hello in one sentence."}]}]},
+            GROQ_API_URL,
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama3-8b-8192",
+                "messages": [{"role": "user", "content": "Say hello in one sentence."}],
+                "max_tokens": 50
+            },
             timeout=20
         )
         return jsonify({
             'status': response.status_code,
-            'key_prefix': GEMINI_API_KEY[:8],
+            'key_prefix': GROQ_API_KEY[:8],
             'response': response.json() if response.status_code == 200 else response.text[:300]
         })
     except Exception as e:
