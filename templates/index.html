@@ -102,11 +102,6 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .results-title { font-family: 'DM Serif Display', serif; font-size: 24px; color: var(--text); }
 .results-meta { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 10px; }
 .results-meta .date-pill { background: var(--accent-light); color: var(--accent); padding: 4px 11px; border-radius: 12px; font-weight: 500; font-size: 12px; letter-spacing: 0.01em; white-space: nowrap; }
-.results-stale-banner { display: none; align-items: center; gap: 10px; padding: 10px 14px; background: #FEF3C7; border: 1px solid #F59E0B; border-radius: var(--radius); font-size: 13px; color: #78350F; margin-bottom: 1rem; }
-.results-stale-banner.active { display: flex; }
-.results-stale-banner button { margin-left: auto; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; background: #78350F; color: white; border: none; border-radius: 5px; cursor: pointer; }
-.results-stale-banner button:hover { opacity: 0.85; }
-.results.stale .kpi-grid, .results.stale .insight-card, .results.stale .charts-grid, .results.stale .articles-card, .results.stale .ab-note { opacity: 0.45; transition: opacity 0.2s; pointer-events: none; }
 .error-banner { display: none; background: var(--negative-bg); border: 1px solid #FECACA; border-radius: var(--radius); padding: 12px 16px; font-size: 14px; color: var(--negative); margin-bottom: 1.5rem; }
 .error-banner.active { display: block; }
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
@@ -340,10 +335,6 @@ tr:hover td { background: var(--bg); }
     </div>
     <div class="results" id="results">
       <div class="error-banner" id="error-banner"></div>
-      <div class="results-stale-banner" id="stale-banner">
-        <span>Settings have changed — click below to refresh the results.</span>
-        <button onclick="runAnalysis()">Run Analysis</button>
-      </div>
       <div class="results-header">
         <div class="results-title" id="results-title">Results</div>
         <div class="results-meta" id="results-meta"></div>
@@ -644,44 +635,8 @@ function updateDensityHint() {
   document.getElementById('density-hint').textContent = text;
 }
 
-// Run once on load so the hint reflects the slider default
-window.addEventListener('DOMContentLoaded', () => {
-  updateDensityHint();
-  attachStaleListeners();
-});
-
-// ── Stale-results detection ─────────────────────────────────────────────────
-// When a user changes brands, the slider, or the date range AFTER a completed
-// analysis, the on-screen results no longer match the sidebar settings. This
-// detects the mismatch and greys out the results with a banner telling them
-// to re-run — so they're never confused about which inputs produced the chart.
-let lastRunSignature = null;
-
-function currentInputSignature() {
-  const brands = document.getElementById('brands-input').value
-    .split('\n').map(b => b.trim()).filter(Boolean).join('|');
-  const limit  = document.getElementById('article-limit').value;
-  return `${brands}::${limit}`;
-}
-
-function checkStale() {
-  const results = document.getElementById('results');
-  const banner  = document.getElementById('stale-banner');
-  // Only meaningful if we actually have results on screen
-  if (!results.classList.contains('active') || !lastRunSignature) return;
-  const stale = currentInputSignature() !== lastRunSignature;
-  results.classList.toggle('stale', stale);
-  banner.classList.toggle('active', stale);
-}
-
-function attachStaleListeners() {
-  ['brands-input', 'article-limit'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('input',  checkStale);
-    el.addEventListener('change', checkStale);
-  });
-}
+// Run once on load so the density hint reflects the slider default
+window.addEventListener('DOMContentLoaded', updateDensityHint);
 
 // ── Analysis ──────────────────────────────────────────────────────────────────
 async function runAnalysis() {
@@ -690,8 +645,7 @@ async function runAnalysis() {
   if (brands.length < 2) { alert('Please enter at least 2 brands.'); return; }
 
   document.getElementById('empty-state').style.display = 'none';
-  document.getElementById('results').classList.remove('active', 'stale');
-  document.getElementById('stale-banner').classList.remove('active');
+  document.getElementById('results').classList.remove('active');
   document.getElementById('loading-state').classList.add('active');
   document.getElementById('run-btn').disabled = true;
   document.getElementById('error-banner').classList.remove('active');
@@ -718,9 +672,6 @@ async function runAnalysis() {
     try {
       lastData = data;
       renderResults(data);
-      // Snapshot the inputs that produced this result; any later change will
-      // flip the banner on via checkStale().
-      lastRunSignature = currentInputSignature();
     } catch(renderErr) {
       console.error('Render error:', renderErr);
       document.getElementById('error-banner').textContent = 'Render error: ' + renderErr.message;
