@@ -30,7 +30,6 @@ Built with Flask on the backend and vanilla JS on the frontend — no frontend f
 - User accounts with persistent search history
 - Email alerts when sentiment drops below a threshold
 - Full password reset flow via email
-- Pluggable data source — feature-flag switch between NewsAPI and GDELT
 
 ---
 
@@ -43,7 +42,7 @@ Built with Flask on the backend and vanilla JS on the frontend — no frontend f
 | Auth | Flask-Login, Werkzeug |
 | Sentiment | Keyword NLP (no external API) |
 | LLM | Groq LLaMA 3.1 8B Instant |
-| News | NewsAPI (primary) / GDELT DOC 2.0 (alternative) |
+| News | NewsAPI |
 | Statistics | scipy, pandas |
 | Email | Flask-Mail + Gmail SMTP |
 | Scheduler | APScheduler |
@@ -110,7 +109,6 @@ sentiq/
 | `MAIL_USERNAME` | Gmail address used to send emails |
 | `MAIL_PASSWORD` | Gmail App Password |
 | `APP_URL` | Public app URL — used in password reset links |
-| `USE_GDELT` | Optional — set to `1` to route article fetching through GDELT instead of NewsAPI |
 
 ---
 
@@ -158,7 +156,6 @@ POST   /api/history/:id/alert/test
 - Groq free tier has generous rate limits — sufficient for demo and regular usage
 - Alerts run on a 1-hour scheduler, so first trigger can take up to an hour
 - Sentiment accuracy is lower than a fine-tuned transformer but good enough for brand-level comparisons
-- Set `USE_GDELT=1` for broader historical coverage (up to 3 months) — works locally but may hit rate limits on shared hosting IPs
 
 ---
 
