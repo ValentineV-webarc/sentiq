@@ -583,24 +583,96 @@ def analyse():
     if len(brands) < 2:
         return jsonify({'error': 'Please enter at least 2 brands.'}), 400
 
+    # ── Resolve the date window ──────────────────────────────────────────────
+    # Users can either pick a preset (days=3/7/14/30) or supply a custom
+    # from/to range. Default is last 7 days, which gives a meaningful trend
+    # without burning through the NewsAPI free tier's 30-day history limit.
+    today         = datetime.utcnow().date()
+    from_param    = (data.get('from') or '').strip()
+    to_param      = (data.get('to')   or '').strip()
+    days_param    = data.get('days', 7)
+
+    if from_param and to_param:
+        # Custom range — validate the strings are YYYY-MM-DD
+        try:
+            from_date = datetime.strptime(from_param, '%Y-%m-%d').date()
+            to_date   = datetime.strptime(to_param,   '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Dates must be in YYYY-MM-DD format.'}), 400
+        if from_date > to_date:
+            return jsonify({'error': 'Start date must be before end date.'}), 400
+        if to_date > today:
+            return jsonify({'error': 'End date cannot be in the future.'}), 400
+        if (today - from_date).days > 30:
+            return jsonify({'error': 'NewsAPI free tier only returns articles from the last 30 days. Please pick a start date within that window.'}), 400
+    else:
+        # Preset — clamp to the NewsAPI free-tier ceiling
+        try:
+            days = int(days_param)
+        except (TypeError, ValueError):
+            days = 7
+        days = max(1, min(30, days))
+        to_date   = today
+        from_date = today - timedelta(days=days - 1)
+
+    from_str = from_date.strftime('%Y-%m-%d')
+    to_str   = to_date.strftime('%Y-%m-%d')
+
     newsapi      = NewsApiClient(api_key=API_KEY)
     all_articles = []
+    total_days   = (to_date - from_date).days + 1
+    # NewsAPI returns newest-first, so a single call for a wide window clusters
+    # results on the most recent day. We defeat that by splitting the window
+    # into chunks and fetching each separately — this forces articles to come
+    # from every part of the range, not just the latest few days.
+    #
+    # Chunk sizing scales with window length so we always cover the window well:
+    #   ≤ 4 days  → 2-day chunks (fine-grained for the typical week view)
+    #   5–14 days → 3-day chunks
+    #   15–30 days → 4-day chunks
+    # Cap at 10 chunks to respect NewsAPI free-tier daily request limits.
+    if   total_days <= 4:  chunk_days = 2
+    elif total_days <= 14: chunk_days = 3
+    else:                  chunk_days = 4
+    n_chunks  = min(10, max(1, -(-total_days // chunk_days)))   # ceiling division
+    per_chunk = max(5, limit // n_chunks)
+
     for brand in brands:
-        try:
-            articles = newsapi.get_everything(q=brand, language='en',
-                sort_by='publishedAt', page_size=limit)
-            for article in articles['articles']:
-                all_articles.append({
-                    'brand': brand, 'title': article['title'],
-                    'description': article['description'],
-                    'published_at': article['publishedAt'],
-                    'source': article['source']['name'], 'url': article['url']
-                })
-        except Exception as e:
-            return jsonify({'error': f'Failed to fetch articles for {brand}: {str(e)}'}), 500
+        seen_urls = set()
+        brand_articles = []
+        for i in range(n_chunks):
+            chunk_start = from_date + timedelta(days=i * chunk_days)
+            chunk_end   = min(chunk_start + timedelta(days=chunk_days - 1), to_date)
+            if chunk_start > to_date:
+                break
+            try:
+                articles = newsapi.get_everything(
+                    q=brand, language='en',
+                    sort_by='publishedAt',
+                    from_param=chunk_start.strftime('%Y-%m-%d'),
+                    to=chunk_end.strftime('%Y-%m-%d'),
+                    page_size=min(per_chunk, 100)
+                )
+                for article in articles.get('articles', []):
+                    url = article.get('url')
+                    if not url or url in seen_urls:
+                        continue   # Dedupe — chunks overlap by a day occasionally
+                    seen_urls.add(url)
+                    brand_articles.append({
+                        'brand': brand, 'title': article['title'],
+                        'description': article['description'],
+                        'published_at': article['publishedAt'],
+                        'source': article['source']['name'], 'url': article['url']
+                    })
+            except Exception as e:
+                # One bad chunk shouldn't fail the whole analysis — log and keep going
+                print(f"[Fetch] Chunk {chunk_start}–{chunk_end} failed for {brand}: {e}")
+                continue
+        # Cap to the requested total per brand so the slider still means something
+        all_articles.extend(brand_articles[:limit])
 
     if not all_articles:
-        return jsonify({'error': 'No articles found. Please try different brand names.'}), 400
+        return jsonify({'error': f'No articles found between {from_str} and {to_str}. Try different brand names or a wider date range.'}), 400
 
     df = pd.DataFrame(all_articles)
     df['text'] = df['title'].fillna('') + ' ' + df['description'].fillna('')
@@ -699,7 +771,9 @@ def analyse():
 
     return jsonify({'total_articles': len(df), 'brands': brands, 'kpis': kpis,
                     'ab_test': ab_test, 'trend': trend_data, 'articles': top_articles,
-                    'insight': insight})
+                    'insight': insight,
+                    'date_range': {'from': from_str, 'to': to_str,
+                                   'days': (to_date - from_date).days + 1}})
 
 # ── PDF Export ────────────────────────────────────────────────────────────────
 
