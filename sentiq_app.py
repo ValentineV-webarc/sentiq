@@ -684,8 +684,13 @@ def analyse():
         except (TypeError, ValueError):
             days = 7
         days = max(1, min(30, days))
-        to_date   = today
-        from_date = today - timedelta(days=days - 1)
+        # Window ends YESTERDAY, not today. Today's articles are still being
+        # indexed — including a partial day would make the chart's last bar
+        # look weirdly short and the header date range would disagree with
+        # where the chart actually ends. Last complete N days is the honest
+        # default, and matches how Google Analytics / Stripe / GitHub handle it.
+        to_date   = today - timedelta(days=1)
+        from_date = to_date - timedelta(days=days - 1)
 
     from_str = from_date.strftime('%Y-%m-%d')
     to_str   = to_date.strftime('%Y-%m-%d')
