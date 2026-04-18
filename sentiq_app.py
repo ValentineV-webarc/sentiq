@@ -621,8 +621,31 @@ def analyse():
     summary['percentage'] = summary.groupby('brand')['count'].transform(lambda x: round(x / x.sum() * 100, 1))
 
     df['date'] = pd.to_datetime(df['published_at']).dt.strftime('%Y-%m-%d')
-    trend = df.groupby(['date', 'brand'])['sentiment_score'].mean().reset_index()
-    trend['sentiment_score'] = trend['sentiment_score'].round(3)
+
+    # Daily stats per (brand, date): raw positive-rate + article count.
+    # The raw daily rate swings wildly on days with only 1–2 articles, which
+    # used to make the trend line look like sentiment had "crashed". Below we
+    # smooth it with a 3-day weighted rolling mean so each plotted point
+    # aggregates roughly 3 days' worth of evidence.
+    daily = df.groupby(['date', 'brand']).agg(
+        raw_score=('sentiment_score', 'mean'),
+        count=('sentiment_score', 'size')
+    ).reset_index()
+
+    # Per-brand: sort by date, then do a 3-day centered rolling mean weighted
+    # by article counts — i.e. sum(score * count) / sum(count) over the window.
+    # Weighting by count means a day with 10 articles influences the smoothed
+    # line far more than a day with 1 article, which is what we want.
+    smoothed_parts = []
+    for brand in brands:
+        b = daily[daily['brand'] == brand].sort_values('date').copy()
+        if len(b) == 0:
+            continue
+        weighted = (b['raw_score'] * b['count']).rolling(window=3, min_periods=1, center=True).sum()
+        weights  = b['count'].rolling(window=3, min_periods=1, center=True).sum()
+        b['sentiment_score'] = (weighted / weights).round(3)
+        smoothed_parts.append(b)
+    trend = pd.concat(smoothed_parts) if smoothed_parts else daily.assign(sentiment_score=daily['raw_score'])
 
     kpis = {}
     for brand in brands:
@@ -648,7 +671,12 @@ def analyse():
     trend_data = {}
     for brand in brands:
         t = trend[trend['brand'] == brand]
-        trend_data[brand] = {'dates': t['date'].tolist(), 'scores': t['sentiment_score'].tolist()}
+        trend_data[brand] = {
+            'dates':      t['date'].tolist(),
+            'scores':     t['sentiment_score'].tolist(),   # smoothed (3-day weighted)
+            'raw_scores': t['raw_score'].round(3).tolist(), # raw daily rate, for tooltip
+            'counts':     t['count'].astype(int).tolist()   # articles that day, for tooltip
+        }
 
     # Auto-save to history if logged in
     if current_user.is_authenticated:
