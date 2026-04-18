@@ -264,7 +264,7 @@ def check_all_alerts():
 
 def generate_insights(brands, kpis, articles):
     """Use Gemini Flash to generate a natural language insight summary."""
-    if not GEMINI_API_KEY:
+    if not GROQ_API_KEY:
         return None
     try:
         # Build context from top articles
@@ -288,7 +288,7 @@ Sample article headlines:
 Write your insight summary:"""
 
         response = http_requests.post(
-            f"{GEMINI_API_URL}?key={GEMINI_API_KEY}",
+            f"{GROQ_API_URL}?key={GROQ_API_KEY}",
             headers={"Content-Type": "application/json"},
             json={"contents": [{"parts": [{"text": prompt}]}]},
             timeout=20
