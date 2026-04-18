@@ -42,6 +42,13 @@ APP_URL = os.environ.get('APP_URL', 'http://localhost:5000')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
 GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
+# GDELT DOC 2.0 API — no auth required, ~3-month historical depth, up to 250
+# articles per request. Flip USE_GDELT=1 in the environment to route article
+# fetching through GDELT instead of NewsAPI, which gives genuinely distributed
+# daily coverage instead of NewsAPI's recency bias.
+USE_GDELT    = os.environ.get('USE_GDELT', '1') == '1'
+GDELT_DOC_URL = 'https://api.gdeltproject.org/api/v2/doc/doc'
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class User(UserMixin, db.Model):
@@ -133,6 +140,71 @@ def analyse_sentiment_batch(texts):
 
 def analyse_sentiment(text):
     return simple_sentiment(text)
+
+def fetch_articles_gdelt(brand, limit, from_date, to_date):
+    """Fetch articles for a single brand from GDELT's DOC 2.0 API.
+
+    GDELT is free, needs no auth, and crucially distributes its returned
+    articles across the whole date window (sorted by relevance, not recency by
+    default) — which sidesteps NewsAPI's "everything is from the last 48h"
+    clustering problem.
+
+    Returns a list of dicts in the same shape the rest of the app expects:
+      {brand, title, description, published_at, source, url}
+
+    On failure returns []; the caller treats failures as "this brand had no
+    articles" rather than aborting the whole analysis.
+    """
+    # GDELT wants 'YYYYMMDDHHMMSS' for start/end; we pad with 00:00:00 and 23:59:59
+    start = from_date.strftime('%Y%m%d') + '000000'
+    end   = to_date.strftime('%Y%m%d') + '235959'
+
+    params = {
+        'query':  f'"{brand}" sourcelang:english',
+        'mode':   'artlist',
+        'maxrecords': min(int(limit), 250),       # GDELT's per-request ceiling
+        'format': 'json',
+        'startdatetime': start,
+        'enddatetime':   end,
+        'sort':   'hybridrel'    # relevance + recency mix — spreads dates
+    }
+    try:
+        r = http_requests.get(
+            GDELT_DOC_URL, params=params, timeout=25,
+            headers={'User-Agent': 'SentIQ/1.0 (+https://github.com)'}
+        )
+        if r.status_code != 200:
+            print(f"[GDELT] {brand}: HTTP {r.status_code}")
+            return []
+        # GDELT sometimes returns empty body or HTML on query errors; be defensive
+        body = r.text.strip()
+        if not body or body.startswith('<'):
+            print(f"[GDELT] {brand}: non-JSON response (len={len(body)})")
+            return []
+        data = r.json()
+    except Exception as e:
+        print(f"[GDELT] {brand}: {type(e).__name__}: {e}")
+        return []
+
+    out = []
+    for a in data.get('articles', []):
+        # GDELT doesn't return a description — fall back to the title alone for
+        # sentiment scoring. seendate arrives as 'YYYYMMDDTHHMMSSZ'; we
+        # normalize to ISO so the rest of the pipeline doesn't care.
+        seendate = a.get('seendate', '')
+        if len(seendate) >= 15 and seendate[8] == 'T':
+            published = f"{seendate[0:4]}-{seendate[4:6]}-{seendate[6:8]}T{seendate[9:11]}:{seendate[11:13]}:{seendate[13:15]}Z"
+        else:
+            published = seendate or to_date.strftime('%Y-%m-%dT00:00:00Z')
+        out.append({
+            'brand':        brand,
+            'title':        a.get('title') or '',
+            'description':  '',       # GDELT: no abstract. Sentiment uses title only.
+            'published_at': published,
+            'source':       a.get('domain') or 'unknown',
+            'url':          a.get('url') or ''
+        })
+    return out
 
 def run_sentiment_for_brands(brands, limit=50):
     newsapi = NewsApiClient(api_key=API_KEY)
@@ -618,58 +690,69 @@ def analyse():
     from_str = from_date.strftime('%Y-%m-%d')
     to_str   = to_date.strftime('%Y-%m-%d')
 
-    newsapi      = NewsApiClient(api_key=API_KEY)
     all_articles = []
     total_days   = (to_date - from_date).days + 1
-    # NewsAPI returns newest-first, so a single call for a wide window clusters
-    # results on the most recent day. We defeat that by splitting the window
-    # into chunks and fetching each separately — this forces articles to come
-    # from every part of the range, not just the latest few days.
-    #
-    # Chunk sizing scales with window length so we always cover the window well:
-    #   ≤ 4 days  → 2-day chunks (fine-grained for the typical week view)
-    #   5–14 days → 3-day chunks
-    #   15–30 days → 4-day chunks
-    # Cap at 10 chunks to respect NewsAPI free-tier daily request limits.
-    if   total_days <= 4:  chunk_days = 2
-    elif total_days <= 14: chunk_days = 3
-    else:                  chunk_days = 4
-    n_chunks  = min(10, max(1, -(-total_days // chunk_days)))   # ceiling division
-    per_chunk = max(5, limit // n_chunks)
 
-    for brand in brands:
-        seen_urls = set()
-        brand_articles = []
-        for i in range(n_chunks):
-            chunk_start = from_date + timedelta(days=i * chunk_days)
-            chunk_end   = min(chunk_start + timedelta(days=chunk_days - 1), to_date)
-            if chunk_start > to_date:
-                break
-            try:
-                articles = newsapi.get_everything(
-                    q=brand, language='en',
-                    sort_by='publishedAt',
-                    from_param=chunk_start.strftime('%Y-%m-%d'),
-                    to=chunk_end.strftime('%Y-%m-%d'),
-                    page_size=min(per_chunk, 100)
-                )
-                for article in articles.get('articles', []):
-                    url = article.get('url')
-                    if not url or url in seen_urls:
-                        continue   # Dedupe — chunks overlap by a day occasionally
-                    seen_urls.add(url)
-                    brand_articles.append({
-                        'brand': brand, 'title': article['title'],
-                        'description': article['description'],
-                        'published_at': article['publishedAt'],
-                        'source': article['source']['name'], 'url': article['url']
-                    })
-            except Exception as e:
-                # One bad chunk shouldn't fail the whole analysis — log and keep going
-                print(f"[Fetch] Chunk {chunk_start}–{chunk_end} failed for {brand}: {e}")
-                continue
-        # Cap to the requested total per brand so the slider still means something
-        all_articles.extend(brand_articles[:limit])
+    if USE_GDELT:
+        # ─ GDELT path ───────────────────────────────────────────────────────
+        # GDELT's DOC 2.0 API handles date-range queries properly — one call
+        # per brand is enough, and it distributes articles across the window
+        # by default. No chunking needed. Cap at 250 (GDELT's per-request
+        # ceiling); if the user asks for more, we honour that ceiling silently.
+        for brand in brands:
+            seen = set()
+            for a in fetch_articles_gdelt(brand, limit, from_date, to_date):
+                if a['url'] in seen:
+                    continue
+                seen.add(a['url'])
+                all_articles.append(a)
+    else:
+        # ─ NewsAPI path (fallback) ─────────────────────────────────────────
+        # NewsAPI returns newest-first, so a single wide call clusters results
+        # on the most recent day. We split the window into chunks and fetch
+        # each separately to force temporal spread.
+        #   ≤ 4 days  → 2-day chunks
+        #   5–14 days → 3-day chunks
+        #   15–30 days → 4-day chunks
+        # Capped at 10 chunks to respect the free-tier daily request budget.
+        newsapi = NewsApiClient(api_key=API_KEY)
+        if   total_days <= 4:  chunk_days = 2
+        elif total_days <= 14: chunk_days = 3
+        else:                  chunk_days = 4
+        n_chunks  = min(10, max(1, -(-total_days // chunk_days)))   # ceiling div
+        per_chunk = max(5, limit // n_chunks)
+
+        for brand in brands:
+            seen_urls = set()
+            brand_articles = []
+            for i in range(n_chunks):
+                chunk_start = from_date + timedelta(days=i * chunk_days)
+                chunk_end   = min(chunk_start + timedelta(days=chunk_days - 1), to_date)
+                if chunk_start > to_date:
+                    break
+                try:
+                    articles = newsapi.get_everything(
+                        q=brand, language='en',
+                        sort_by='publishedAt',
+                        from_param=chunk_start.strftime('%Y-%m-%d'),
+                        to=chunk_end.strftime('%Y-%m-%d'),
+                        page_size=min(per_chunk, 100)
+                    )
+                    for article in articles.get('articles', []):
+                        url = article.get('url')
+                        if not url or url in seen_urls:
+                            continue
+                        seen_urls.add(url)
+                        brand_articles.append({
+                            'brand': brand, 'title': article['title'],
+                            'description': article['description'],
+                            'published_at': article['publishedAt'],
+                            'source': article['source']['name'], 'url': article['url']
+                        })
+                except Exception as e:
+                    print(f"[NewsAPI] Chunk {chunk_start}–{chunk_end} failed for {brand}: {e}")
+                    continue
+            all_articles.extend(brand_articles[:limit])
 
     if not all_articles:
         return jsonify({'error': f'No articles found between {from_str} and {to_str}. Try different brand names or a wider date range.'}), 400
