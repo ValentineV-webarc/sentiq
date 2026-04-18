@@ -918,36 +918,32 @@ function renderResults(data) {
       responsive: true, maintainAspectRatio: false,
       layout: { padding: { top: 4 } },
       plugins: {
-        // Default legend would list 6 entries (brand × sentiment) — noisy.
-        // Use a custom legend with 3 entries for the sentiment categories,
-        // since the brand-grouping is already obvious from bar position.
+        // Default legend would list 6 entries (brand × sentiment). We build
+        // a clean 3-item legend (Positive / Neutral / Negative) — the brand
+        // grouping is already obvious from bar position on the chart.
         legend: {
           position: 'bottom',
           labels: {
             font: { family: 'DM Sans', size: 12 },
-            // De-duplicate: keep one entry per sentiment category
-            filter: (item, chartData) => {
-              const ds = chartData.datasets[item.datasetIndex];
-              return ds._brand === data.brands[0];   // only the first brand's three labels survive
-            },
-            generateLabels: chart => {
-              const out = [];
-              ['pos','neu','neg'].forEach(cat => {
-                const sampleIdx = chart.data.datasets.findIndex(d => d._brand === data.brands[0] && d._cat === cat);
-                if (sampleIdx < 0) return;
-                const d = chart.data.datasets[sampleIdx];
-                out.push({
-                  text: { pos: 'Positive', neu: 'Neutral', neg: 'Negative' }[cat],
-                  fillStyle:   d.backgroundColor,
-                  strokeStyle: d.borderColor,
-                  lineWidth:   1,
-                  hidden:      false,
-                  index:       sampleIdx
-                });
-              });
-              return out;
+            generateLabels: function(chart) {
+              const cats = [
+                { cat: 'pos', text: 'Positive', fill: '#DCFCE7', stroke: '#16A34A' },
+                { cat: 'neu', text: 'Neutral',  fill: '#E5E5E0', stroke: '#9A968C' },
+                { cat: 'neg', text: 'Negative', fill: '#FEE2E2', stroke: '#DC2626' }
+              ];
+              return cats.map((c, i) => ({
+                text:        c.text,
+                fillStyle:   c.fill,
+                strokeStyle: c.stroke,
+                lineWidth:   1,
+                hidden:      false,
+                datasetIndex: i      // harmless; we don't wire clicks
+              }));
             }
-          }
+          },
+          // Disable clicking legend items — toggling them on/off while stacks
+          // span multiple datasets per brand would be misleading.
+          onClick: () => {}
         },
         tooltip: {
           mode: 'index',
@@ -963,11 +959,11 @@ function renderResults(data) {
             // Build one summary line per brand (not one per bar segment)
             label: ctx => {
               const ds = ctx.dataset;
-              if (ds._cat !== 'pos') return null;   // only render on the top segment's tick
+              if (!ds || ds._cat !== 'pos') return '';   // only render on the top segment's tick
               const idx = ctx.dataIndex;
               const brand = ds._brand;
               const bi = data.brands.indexOf(brand);
-              const m = brandMaps[bi].get(allDates[idx]) || { pos: 0, neu: 0, neg: 0 };
+              const m = (brandMaps[bi] && brandMaps[bi].get(allDates[idx])) || { pos: 0, neu: 0, neg: 0 };
               const total = m.pos + m.neu + m.neg;
               if (total === 0) return `${brand}: no articles`;
               const pct = n => Math.round((n / total) * 100);
