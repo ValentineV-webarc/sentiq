@@ -152,15 +152,8 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .chart-wrap { position: relative; height: 260px; }
 .chart-note { font-size: 11px; color: #9A968C; line-height: 1.5; margin-top: 12px; padding: 8px 10px; background: var(--bg); border-radius: 6px; opacity: 0.9; }
 
-/* Analysis-period selector — segmented control of day presets + optional custom range */
-.period-chips { display: flex; gap: 4px; }
-.period-chip { flex: 1; padding: 7px 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; white-space: nowrap; }
-.period-chip:hover { border-color: #C7C3B9; color: var(--text); }
-.period-chip.active { background: var(--accent); border-color: var(--accent); color: white; }
-.period-custom-toggle { margin-top: 6px; background: none; border: none; font-family: 'DM Sans', sans-serif; font-size: 12px; color: var(--accent); cursor: pointer; padding: 2px 0; text-decoration: underline; text-underline-offset: 2px; }
-.period-custom-toggle:hover { opacity: 0.75; }
-.period-custom { display: none; margin-top: 8px; flex-direction: column; gap: 6px; }
-.period-custom.open { display: flex; }
+/* Analysis-period selector — two date pickers (from / to) */
+.period-custom { display: flex; flex-direction: column; gap: 6px; }
 .period-custom-row { display: flex; gap: 6px; align-items: center; }
 .period-custom-row label { font-size: 11px; color: var(--text-secondary); width: 32px; flex-shrink: 0; }
 .period-date-input { flex: 1; padding: 6px 8px; font-family: 'DM Sans', sans-serif; font-size: 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text); outline: none; }
@@ -310,23 +303,17 @@ tr:hover td { background: var(--bg); }
     </div>
     <div>
       <div class="sidebar-label" style="margin-bottom:10px">Analysis period</div>
-      <div class="period-chips" id="period-chips">
-        <button class="period-chip"        data-days="3"  onclick="setPeriod(3)">3 days</button>
-        <button class="period-chip active" data-days="7"  onclick="setPeriod(7)">7 days</button>
-        <button class="period-chip"        data-days="14" onclick="setPeriod(14)">14 days</button>
-        <button class="period-chip"        data-days="30" onclick="setPeriod(30)">30 days</button>
-      </div>
-      <button class="period-custom-toggle" id="period-custom-toggle" onclick="toggleCustomPeriod()">Custom range</button>
-      <div class="period-custom" id="period-custom">
+      <div class="period-custom">
         <div class="period-custom-row">
           <label for="date-from">From</label>
-          <input class="period-date-input" type="date" id="date-from" onchange="onCustomDateChange()">
+          <input class="period-date-input" type="date" id="date-from" onchange="onDateChange()">
         </div>
         <div class="period-custom-row">
           <label for="date-to">To</label>
-          <input class="period-date-input" type="date" id="date-to" onchange="onCustomDateChange()">
+          <input class="period-date-input" type="date" id="date-to" onchange="onDateChange()">
         </div>
       </div>
+      <p class="hint" style="margin-top:8px">Up to 30 days back · NewsAPI free tier limit</p>
     </div>
     <div>
       <div class="slider-row">
@@ -645,72 +632,48 @@ function rerunSearch(h) {
 }
 
 // ── Analysis period ──────────────────────────────────────────────────────────
-// `periodMode` is 'preset' (using selectedDays) or 'custom' (using from/to inputs).
-let periodMode   = 'preset';
-let selectedDays = 7;
-
-function setPeriod(days) {
-  periodMode   = 'preset';
-  selectedDays = days;
-  document.querySelectorAll('#period-chips .period-chip').forEach(c => {
-    c.classList.toggle('active', +c.dataset.days === days);
-  });
-  // Collapse the custom panel if it was open
-  document.getElementById('period-custom').classList.remove('open');
-  document.getElementById('period-custom-toggle').textContent = 'Custom range';
+// The user picks a From/To date pair. On first load we default to the last
+// 7 days and cap the selectable range at the NewsAPI free-tier 30-day limit.
+function initPeriodInputs() {
+  const today = new Date();
+  const iso   = d => d.toISOString().slice(0, 10);
+  const to    = iso(today);
+  const from  = iso(new Date(today.getTime() - 6 * 86400000));       // 7-day window inclusive
+  const min   = iso(new Date(today.getTime() - 30 * 86400000));      // NewsAPI ceiling
+  const fromEl = document.getElementById('date-from');
+  const toEl   = document.getElementById('date-to');
+  fromEl.value = from; toEl.value = to;
+  fromEl.min = min; fromEl.max = to;
+  toEl.min   = min; toEl.max   = to;
   updateDensityHint();
 }
 
-function toggleCustomPeriod() {
-  const panel  = document.getElementById('period-custom');
-  const toggle = document.getElementById('period-custom-toggle');
-  const opening = !panel.classList.contains('open');
-  panel.classList.toggle('open');
-  toggle.textContent = opening ? 'Hide custom range' : 'Custom range';
-  if (opening) {
-    // Pre-fill with the currently-selected preset window; set max bounds to
-    // today and min to 30 days ago (NewsAPI free-tier limit).
-    const today = new Date();
-    const to    = today.toISOString().slice(0, 10);
-    const fromDate = new Date(today); fromDate.setDate(today.getDate() - (selectedDays - 1));
-    const from  = fromDate.toISOString().slice(0, 10);
-    const minDate = new Date(today); minDate.setDate(today.getDate() - 30);
-    const min   = minDate.toISOString().slice(0, 10);
-    const fromEl = document.getElementById('date-from');
-    const toEl   = document.getElementById('date-to');
-    if (!fromEl.value) fromEl.value = from;
-    if (!toEl.value)   toEl.value   = to;
-    fromEl.max = to;   fromEl.min = min;
-    toEl.max   = to;   toEl.min   = min;
+function onDateChange() {
+  // Keep the From/To pair sane: From can never be after To, and neither can be
+  // in the future. Bumping each other keeps the UI coherent without errors.
+  const fromEl = document.getElementById('date-from');
+  const toEl   = document.getElementById('date-to');
+  if (fromEl.value && toEl.value && fromEl.value > toEl.value) {
+    toEl.value = fromEl.value;
   }
-}
-
-function onCustomDateChange() {
-  periodMode = 'custom';
-  // Visually un-highlight all presets when the user types a custom date
-  document.querySelectorAll('#period-chips .period-chip').forEach(c => c.classList.remove('active'));
   updateDensityHint();
 }
 
 function currentPeriodPayload() {
-  if (periodMode === 'custom') {
-    const from = document.getElementById('date-from').value;
-    const to   = document.getElementById('date-to').value;
-    if (from && to) return { from, to };
-  }
-  return { days: selectedDays };
+  const from = document.getElementById('date-from').value;
+  const to   = document.getElementById('date-to').value;
+  if (from && to) return { from, to };
+  return { days: 7 };   // fallback if something went wrong with the inputs
 }
 
 function currentPeriodDays() {
-  if (periodMode === 'custom') {
-    const from = document.getElementById('date-from').value;
-    const to   = document.getElementById('date-to').value;
-    if (from && to) {
-      const d1 = new Date(from), d2 = new Date(to);
-      return Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
-    }
+  const from = document.getElementById('date-from').value;
+  const to   = document.getElementById('date-to').value;
+  if (from && to) {
+    const d1 = new Date(from), d2 = new Date(to);
+    return Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
   }
-  return selectedDays;
+  return 7;
 }
 
 function updateDensityHint() {
@@ -727,8 +690,8 @@ function updateDensityHint() {
   document.getElementById('density-hint').textContent = text;
 }
 
-// Run once on load so the hint matches the default state
-window.addEventListener('DOMContentLoaded', updateDensityHint);
+// Run once on load to set default dates and the density hint
+window.addEventListener('DOMContentLoaded', initPeriodInputs);
 
 // ── Analysis ──────────────────────────────────────────────────────────────────
 async function runAnalysis() {
