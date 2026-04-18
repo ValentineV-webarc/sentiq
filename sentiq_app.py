@@ -632,7 +632,7 @@ def test_alert(history_id):
                 <h2 style="color:white;margin:0;font-size:18px">SentIQ</h2>
               </div>
               <div style="border:1px solid #E4E1DA;border-top:none;padding:24px 28px;border-radius:0 0 8px 8px">
-                <h3 style="margin:0 0 8px">✅ Test alert successful!</h3>
+                <h3 style="margin:0 0 8px">Test alert successful!</h3>
                 <p style="color:#6B6860;font-size:14px;margin:0">
                   Your alert for <strong>{', '.join(json.loads(h.brands))}</strong> is configured.<br>
                   You'll be notified when positive sentiment drops below <strong>{h.alert.threshold:.0f}%</strong>.
