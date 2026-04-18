@@ -684,13 +684,8 @@ def analyse():
         except (TypeError, ValueError):
             days = 7
         days = max(1, min(30, days))
-        # Window ends YESTERDAY, not today. Today's articles are still being
-        # indexed — including a partial day would make the chart's last bar
-        # look weirdly short and the header date range would disagree with
-        # where the chart actually ends. Last complete N days is the honest
-        # default, and matches how Google Analytics / Stripe / GitHub handle it.
-        to_date   = today - timedelta(days=1)
-        from_date = to_date - timedelta(days=days - 1)
+        to_date   = today
+        from_date = today - timedelta(days=days - 1)
 
     from_str = from_date.strftime('%Y-%m-%d')
     to_str   = to_date.strftime('%Y-%m-%d')
@@ -763,6 +758,18 @@ def analyse():
         return jsonify({'error': f'No articles found between {from_str} and {to_str}. Try different brand names or a wider date range.'}), 400
 
     df = pd.DataFrame(all_articles)
+
+    # Trust-but-verify: some chunks may have returned articles outside their
+    # asked-for date range (NewsAPI's free-tier recency bias ignores the older
+    # boundaries of a query). Parse each publish date and drop anything that
+    # falls outside the full requested window [from_date, to_date]. This gives
+    # the chart honest per-day counts instead of inflating recent days.
+    df['date'] = pd.to_datetime(df['published_at']).dt.strftime('%Y-%m-%d')
+    df = df[(df['date'] >= from_str) & (df['date'] <= to_str)].reset_index(drop=True)
+
+    if len(df) == 0:
+        return jsonify({'error': f'No articles found between {from_str} and {to_str}. Try different brand names or a wider date range.'}), 400
+
     df['text'] = df['title'].fillna('') + ' ' + df['description'].fillna('')
 
     # Batch sentiment analysis — send all texts at once
@@ -779,8 +786,6 @@ def analyse():
 
     summary = df.groupby(['brand', 'sentiment']).size().reset_index(name='count')
     summary['percentage'] = summary.groupby('brand')['count'].transform(lambda x: round(x / x.sum() * 100, 1))
-
-    df['date'] = pd.to_datetime(df['published_at']).dt.strftime('%Y-%m-%d')
 
     # Daily stats per (brand, date): raw positive-rate, article count, and a
     # per-sentiment breakdown. The breakdown (pos/neu/neg counts per day) is
