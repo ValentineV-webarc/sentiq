@@ -108,8 +108,15 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .kpi-brand { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 8px; }
 .kpi-number { font-family: 'DM Serif Display', serif; font-size: 36px; color: var(--text); line-height: 1; margin-bottom: 4px; }
 .kpi-label { font-size: 13px; color: var(--text-secondary); }
-.kpi-bar { margin-top: 10px; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
-.kpi-bar-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.8s ease; }
+/* KPI card bar — split into positive / neutral / negative segments so a viewer
+   sees the full composition at a glance, not just the positive % */
+.kpi-bar { margin-top: 12px; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; display: flex; cursor: help; }
+.kpi-seg { height: 100%; transition: flex 0.8s ease; }
+.kpi-seg-pos { background: #16A34A; }
+.kpi-seg-neu { background: #B5B09E; }
+.kpi-seg-neg { background: #DC2626; }
+.kpi-coverage { margin-top: 8px; font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+.kpi-coverage .warn { color: #A16207; }
 
 /* A/B test caption — small, muted, non-intrusive */
 .ab-note {
@@ -140,10 +147,16 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .insight-text { font-size: 14px; color: var(--text); line-height: 1.7; }
 .insight-loading { font-size: 13px; color: var(--text-secondary); font-style: italic; }
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
-.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 .chart-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 1rem; }
 .chart-wrap { position: relative; height: 260px; }
 .chart-note { font-size: 11px; color: #9A968C; line-height: 1.5; margin-top: 12px; padding: 8px 10px; background: var(--bg); border-radius: 6px; opacity: 0.9; }
+
+/* Popular comparisons chips — shown in sidebar to help first-time visitors */
+.suggestions-section { display: flex; flex-direction: column; gap: 6px; }
+.suggestion-chip { text-align: left; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--text); cursor: pointer; transition: background 0.15s, border-color 0.15s, transform 0.1s; }
+.suggestion-chip:hover { background: #eeeae2; border-color: #D6D2C9; }
+.suggestion-chip:active { transform: scale(0.98); }
 .articles-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .articles-header { font-size: 14px; font-weight: 600; color: var(--text); padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -288,6 +301,15 @@ tr:hover td { background: var(--bg); }
       <textarea id="brands-input" placeholder="One brand per line&#10;&#10;e.g.&#10;MediaTek&#10;Snapdragon&#10;Apple"></textarea>
     </div>
     <div>
+      <div class="sidebar-label" style="margin-bottom:10px">Try a comparison</div>
+      <div class="suggestions-section">
+        <button class="suggestion-chip" onclick="loadSuggestion(['Apple','Samsung'])">Apple vs Samsung</button>
+        <button class="suggestion-chip" onclick="loadSuggestion(['Tesla','Ford'])">Tesla vs Ford</button>
+        <button class="suggestion-chip" onclick="loadSuggestion(['Nvidia','AMD'])">Nvidia vs AMD</button>
+        <button class="suggestion-chip" onclick="loadSuggestion(['Netflix','Disney'])">Netflix vs Disney</button>
+      </div>
+    </div>
+    <div>
       <div class="slider-row">
         <div class="sidebar-label" style="margin:0">Articles per brand</div>
         <span class="slider-val" id="slider-val">50</span>
@@ -339,6 +361,7 @@ tr:hover td { background: var(--bg); }
         <div class="chart-card">
           <div class="chart-title">Sentiment Distribution</div>
           <div class="chart-wrap"><canvas id="bar-chart"></canvas></div>
+          <div class="chart-note">Share of articles rated positive vs negative for each brand. Neutral coverage is excluded here — see the coloured bar inside each KPI card for the full split.</div>
         </div>
         <div class="chart-card">
           <div class="chart-title">Sentiment Trend Over Time</div>
@@ -602,6 +625,12 @@ function rerunSearch(h) {
   runAnalysis();
 }
 
+// Popular-comparison chips in the sidebar: populate the textarea and run.
+function loadSuggestion(brands) {
+  document.getElementById('brands-input').value = brands.join('\n');
+  runAnalysis();
+}
+
 // ── Analysis ──────────────────────────────────────────────────────────────────
 async function runAnalysis() {
   const brands = document.getElementById('brands-input').value.split('\n').map(b=>b.trim()).filter(b=>b.length>0);
@@ -702,14 +731,35 @@ function renderResults(data) {
   } else {
     insightCard.classList.remove('active');
   }
-  const grid=document.getElementById('kpi-grid'); grid.innerHTML='';
-  data.brands.forEach((brand,i)=>{ const kpi=data.kpis[brand]; grid.innerHTML+=`
-    <div class="kpi-card">
-      <div class="kpi-brand">${brand}</div>
-      <div class="kpi-number">${kpi.positive.toFixed(1)}%</div>
-      <div class="kpi-label">positive sentiment</div>
-      <div class="kpi-bar"><div class="kpi-bar-fill" style="width:${kpi.positive}%;background:${COLORS[i]}"></div></div>
-    </div>`; });
+  const grid = document.getElementById('kpi-grid'); grid.innerHTML = '';
+  data.brands.forEach((brand, i) => {
+    const kpi = data.kpis[brand];
+    const pos = kpi.positive;
+    const neg = kpi.negative;
+    const neu = Math.max(0, +(100 - pos - neg).toFixed(1));
+    const days = kpi.days_with_articles || 0;
+    // Flag sparse coverage visually if articles are crammed into very few days —
+    // this is the pattern that produces confusing trend lines.
+    const sparse = days > 0 && days < 3;
+    const coverageText = days === 0
+      ? `${kpi.total} articles`
+      : `${kpi.total} articles across ${days} day${days === 1 ? '' : 's'}`;
+    const tooltip = `Positive ${pos.toFixed(0)}% · Neutral ${neu.toFixed(0)}% · Negative ${neg.toFixed(0)}%`;
+    grid.innerHTML += `
+      <div class="kpi-card">
+        <div class="kpi-brand">${brand}</div>
+        <div class="kpi-number">${pos.toFixed(1)}%</div>
+        <div class="kpi-label">positive sentiment</div>
+        <div class="kpi-bar" title="${tooltip}">
+          <div class="kpi-seg kpi-seg-pos" style="flex:${pos}"></div>
+          <div class="kpi-seg kpi-seg-neu" style="flex:${neu}"></div>
+          <div class="kpi-seg kpi-seg-neg" style="flex:${neg}"></div>
+        </div>
+        <div class="kpi-coverage">
+          <span class="${sparse ? 'warn' : ''}">${coverageText}</span>${sparse ? ' · limited coverage' : ''}
+        </div>
+      </div>`;
+  });
   const abCard=document.getElementById('ab-card');
   if (data.ab_test) {
     abCard.style.display='block';
@@ -719,11 +769,48 @@ function renderResults(data) {
     abCard.textContent = `A/B test — t = ${data.ab_test.t_stat}, p = ${data.ab_test.p_value} · ${sig}`;
   } else abCard.style.display='none';
   if (barChart) barChart.destroy();
-  barChart=new Chart(document.getElementById('bar-chart').getContext('2d'),{type:'bar',data:{labels:data.brands,
-    datasets:[{label:'Positive',data:data.brands.map(b=>data.kpis[b].positive),backgroundColor:'#DCFCE7',borderColor:'#16A34A',borderWidth:1.5,borderRadius:4},
-              {label:'Negative',data:data.brands.map(b=>data.kpis[b].negative),backgroundColor:'#FEE2E2',borderColor:'#DC2626',borderWidth:1.5,borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{family:'DM Sans',size:12}}}},
-      scales:{y:{max:100,ticks:{callback:v=>v+'%',font:{family:'DM Sans',size:11}},grid:{color:'#F0EDE6'}},x:{ticks:{font:{family:'DM Sans',size:12}},grid:{display:false}}}}});
+  // Inline plugin that paints each bar's % value just above the bar, so viewers
+  // don't have to eyeball the Y-axis to read the numbers.
+  const barValueLabels = {
+    id: 'barValueLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      ctx.save();
+      ctx.font = '600 11px "DM Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      chart.data.datasets.forEach((dataset, dsIdx) => {
+        const meta = chart.getDatasetMeta(dsIdx);
+        meta.data.forEach((bar, i) => {
+          const val = dataset.data[i];
+          if (val == null) return;
+          ctx.fillStyle = dataset.borderColor;
+          ctx.fillText(`${val.toFixed(0)}%`, bar.x, bar.y - 4);
+        });
+      });
+      ctx.restore();
+    }
+  };
+  barChart = new Chart(document.getElementById('bar-chart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: data.brands,
+      datasets: [
+        { label: 'Positive', data: data.brands.map(b => data.kpis[b].positive), backgroundColor: '#DCFCE7', borderColor: '#16A34A', borderWidth: 1.5, borderRadius: 4 },
+        { label: 'Negative', data: data.brands.map(b => data.kpis[b].negative), backgroundColor: '#FEE2E2', borderColor: '#DC2626', borderWidth: 1.5, borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 18 } },    // leave room for the value labels above the bars
+      plugins: { legend: { position: 'bottom', labels: { font: { family: 'DM Sans', size: 12 } } } },
+      scales: {
+        y: { max: 100, ticks: { callback: v => v + '%', font: { family: 'DM Sans', size: 11 } }, grid: { color: '#F0EDE6' } },
+        x: { ticks: { font: { family: 'DM Sans', size: 12 } }, grid: { display: false } }
+      }
+    },
+    plugins: [barValueLabels]
+  });
   if (lineChart) lineChart.destroy();
   // Build one sorted x-axis from the union of every brand's dates, then plot
   // each brand's scores as values pinned to their ACTUAL date (null = gap).
