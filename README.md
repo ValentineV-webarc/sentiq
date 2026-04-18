@@ -1,8 +1,8 @@
 # SentIQ
 
-Brand sentiment monitoring from live news. Compare how the media covers different brands, track sentiment over time, and get an AI-generated summary explaining what's driving the results.
+Brand sentiment monitoring from live news. Compare how the media covers different brands, track sentiment day by day, and get an AI-generated summary explaining what's driving the results.
 
-**Live:** https://sentiq-production-251e.up.railway.app
+**Live:** https://web-production-c4ea8.up.railway.app
 
 ![SentIQ Dashboard](dashboard.png)
 
@@ -10,9 +10,9 @@ Brand sentiment monitoring from live news. Compare how the media covers differen
 
 ## Overview
 
-SentIQ pulls news articles from NewsAPI, classifies each one as positive/negative/neutral using a keyword-based NLP engine, then surfaces the results through a dashboard. It also uses Google Gemini Flash to generate a plain-English insight summary explaining what's driving sentiment for each brand.
+SentIQ pulls news articles from NewsAPI, classifies each one as positive/negative/neutral using a keyword-based NLP engine, then surfaces the results through a dashboard. It also uses Groq's LLaMA 3.1 to generate a plain-English insight summary explaining what's driving sentiment for each brand.
 
-Supports multi-brand comparison, statistical A/B testing (t-test + p-value), trend charts, PDF/CSV export, user accounts, and email alerting.
+Supports multi-brand comparison, statistical A/B testing (Welch's t-test + p-value), a daily coverage-by-sentiment chart, PDF/CSV export, user accounts, and email alerting.
 
 Built with Flask on the backend and vanilla JS on the frontend — no frontend framework, no build step.
 
@@ -21,13 +21,16 @@ Built with Flask on the backend and vanilla JS on the frontend — no frontend f
 ## Features
 
 - Compare up to 6 brands side by side
-- Sentiment distribution + day-by-day trend chart
-- Statistical significance test between two brands
-- AI-generated insight summary powered by Gemini Flash
+- KPI cards with 3-segment positive/neutral/negative bars and coverage warnings
+- Daily coverage chart showing article volume stacked by sentiment category
+- 3-day weighted rolling smoothing so noisy low-volume days don't distort the view
+- Statistical significance test between two brands (Welch's t-test)
+- AI-generated insight summary powered by Groq LLaMA 3.1 — constrained to describe only what the data actually shows
 - One-click PDF report and CSV export
 - User accounts with persistent search history
 - Email alerts when sentiment drops below a threshold
 - Full password reset flow via email
+- Pluggable data source — feature-flag switch between NewsAPI and GDELT
 
 ---
 
@@ -36,22 +39,23 @@ Built with Flask on the backend and vanilla JS on the frontend — no frontend f
 | | |
 |---|---|
 | Backend | Python 3, Flask |
-| Database | SQLite via SQLAlchemy |
+| Database | SQLite via SQLAlchemy (dev) / Postgres (production) |
 | Auth | Flask-Login, Werkzeug |
 | Sentiment | Keyword NLP (no external API) |
-| LLM | Google Gemini Flash |
-| News | NewsAPI |
+| LLM | Groq LLaMA 3.1 8B Instant |
+| News | NewsAPI (primary) / GDELT DOC 2.0 (alternative) |
+| Statistics | scipy, pandas |
 | Email | Flask-Mail + Gmail SMTP |
 | Scheduler | APScheduler |
 | PDF | ReportLab |
-| Charts | Chart.js |
+| Charts | Chart.js 4.4 |
 | Hosting | Railway |
 
 ---
 
 ## Local setup
 
-**Requirements:** Python 3.9+, a NewsAPI key, Gmail with App Password, Google AI Studio API key
+**Requirements:** Python 3.10+, a NewsAPI key, Gmail with App Password, Groq API key
 
 ```bash
 git clone https://github.com/ValentineV-webarc/sentiq.git
@@ -63,14 +67,14 @@ Set your credentials in `sentiq_app.py`:
 
 ```python
 API_KEY = os.environ.get('NEWS_API_KEY', '<your-newsapi-key>')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '<your-gemini-key>')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '<your-groq-key>')
 app.config['MAIL_USERNAME'] = '<your-gmail>'
 app.config['MAIL_PASSWORD'] = '<your-app-password>'
 ```
 
 > **NewsAPI key:** Sign up free at [newsapi.org](https://newsapi.org)
 >
-> **Gemini API key:** Get one free at [aistudio.google.com](https://aistudio.google.com)
+> **Groq API key:** Get one free at [console.groq.com](https://console.groq.com)
 >
 > **Gmail App Password:** Google Account → Security → 2-Step Verification → App passwords
 
@@ -102,10 +106,11 @@ sentiq/
 |---|---|
 | `SECRET_KEY` | Flask session secret |
 | `NEWS_API_KEY` | NewsAPI key |
-| `GEMINI_API_KEY` | Google Gemini Flash API key |
+| `GROQ_API_KEY` | Groq LLaMA API key |
 | `MAIL_USERNAME` | Gmail address used to send emails |
 | `MAIL_PASSWORD` | Gmail App Password |
 | `APP_URL` | Public app URL — used in password reset links |
+| `USE_GDELT` | Optional — set to `1` to route article fetching through GDELT instead of NewsAPI |
 
 ---
 
@@ -126,7 +131,7 @@ Deployed on Railway. Auto-deploys on push to `main`.
 
 ```
 # Analysis
-POST  /api/analyse              { brands: [...], limit: int }
+POST  /api/analyse              { brands: [...], limit: int, days?: int, from?: date, to?: date }
 POST  /api/export/pdf           { ...analyse response }
 
 # Auth
@@ -149,11 +154,11 @@ POST   /api/history/:id/alert/test
 
 ## Notes
 
-- NewsAPI free tier is developer-only — production traffic may hit rate limits
-- Gemini Flash free tier allows 1,500 requests/day — sufficient for demo and light usage
+- NewsAPI free tier is developer-only — capped at 100 requests per 24 hours, and clusters articles near the present regardless of requested date range. The KPI cards flag "limited coverage" when a brand's articles span fewer days than requested.
+- Groq free tier has generous rate limits — sufficient for demo and regular usage
 - Alerts run on a 1-hour scheduler, so first trigger can take up to an hour
-- Trend chart needs articles from multiple days to be meaningful — use limit 100 for better coverage
-- Sentiment accuracy is lower than a fine-tuned model but good enough for brand-level comparisons
+- Sentiment accuracy is lower than a fine-tuned transformer but good enough for brand-level comparisons
+- Set `USE_GDELT=1` for broader historical coverage (up to 3 months) — works locally but may hit rate limits on shared hosting IPs
 
 ---
 
