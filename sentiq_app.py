@@ -326,7 +326,7 @@ Your job is to summarise WHAT THE CHARTS SHOW — a headline verdict, not a roll
 Write exactly 3–4 short sentences, flowing prose, no bullets, no headers, no markdown. Follow this order:
   1. Lead with the verdict: which brand is ahead on positive sentiment and by how many percentage points. If within ~3 points, say "roughly tied".
   2. State whether the gap is meaningful, using the statistical test result in plain words (don't quote t-values).
-  3. Describe the trend line for each brand — rising, falling, flat, or volatile — and anchor it with start/end numbers.
+  3. Describe the trend line for each brand using the EXACT direction word given in the "Trend over time" section below (rising, falling, flat, or volatile) — do NOT substitute your own adjectives. Anchor the description with start and end numbers. Never call a trend "volatile", "dramatic", or "significant strides" unless the data block below literally says "volatile".
   4. Close with ONE sentence naming a likely theme behind the sentiment (drawn loosely from the article examples). Do NOT list article titles.
 
 Tone: punchy, jargon-free, confident. A busy reader must grasp the dashboard in under 15 seconds from your summary alone. Never open with "Our analysis reveals", "This report shows", or any similar filler — start with the verdict itself.
@@ -651,10 +651,15 @@ def analyse():
     for brand in brands:
         pos = summary[(summary['brand'] == brand) & (summary['sentiment'] == 'POSITIVE')]['percentage'].values
         neg = summary[(summary['brand'] == brand) & (summary['sentiment'] == 'NEGATIVE')]['percentage'].values
+        brand_df = df[df['brand'] == brand]
         kpis[brand] = {
-            'positive': float(pos[0]) if len(pos) > 0 else 0.0,
-            'negative': float(neg[0]) if len(neg) > 0 else 0.0,
-            'total':    len(df[df['brand'] == brand])
+            'positive':            float(pos[0]) if len(pos) > 0 else 0.0,
+            'negative':            float(neg[0]) if len(neg) > 0 else 0.0,
+            'total':               len(brand_df),
+            # How many distinct calendar days had at least one article for this brand.
+            # Lets the frontend show "N articles across M days" so viewers can tell
+            # whether a brand has broad coverage or is clustered on just a day or two.
+            'days_with_articles':  int(brand_df['date'].nunique()) if len(brand_df) else 0
         }
 
     ab_test = None
