@@ -300,11 +300,11 @@ tr:hover td { background: var(--bg); }
     <div>
       <div class="slider-row">
         <div class="sidebar-label" style="margin:0">Articles per brand</div>
-        <span class="slider-val" id="slider-val">100</span>
+        <span class="slider-val" id="slider-val">50</span>
       </div>
-      <input type="range" id="article-limit" min="10" max="250" value="100"
+      <input type="range" id="article-limit" min="10" max="100" value="50"
              oninput="document.getElementById('slider-val').textContent = this.value; updateDensityHint();">
-      <p class="hint" style="margin-top:6px" id="density-hint">About 7 articles per day per brand</p>
+      <p class="hint" style="margin-top:6px" id="density-hint">About 7 articles per day · NewsAPI caps at 100</p>
     </div>
     <button class="btn-run" id="run-btn" onclick="runAnalysis()">Run Analysis</button>
     <div>
@@ -630,7 +630,7 @@ function updateDensityHint() {
   if (perDay < 1) {
     text = 'Less than 1 article per day — raise the slider';
   } else {
-    text = `About ${Math.round(perDay)} articles per day per brand`;
+    text = `About ${Math.round(perDay)} articles per day · NewsAPI caps at 100`;
   }
   document.getElementById('density-hint').textContent = text;
 }
