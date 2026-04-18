@@ -352,9 +352,9 @@ tr:hover td { background: var(--bg); }
           <div class="chart-note">Share of articles rated positive vs negative for each brand. Neutral coverage is excluded here — see the coloured bar inside each KPI card for the full split.</div>
         </div>
         <div class="chart-card">
-          <div class="chart-title">Sentiment Trend Over Time</div>
+          <div class="chart-title">Daily Coverage by Sentiment</div>
           <div class="chart-wrap"><canvas id="line-chart"></canvas></div>
-          <div class="chart-note">Bigger dots mean more articles that day — use dot size to gauge how much evidence backs each point. Days with fewer than 3 articles are hidden as too thin to trust. Hover for exact numbers.</div>
+          <div class="chart-note">Each bar shows one day's article volume for a brand, stacked by sentiment (green positive, grey neutral, red negative). Taller bars mean more coverage; the colour mix shows the day's tone. Hover any day for a breakdown.</div>
         </div>
       </div>
       <div class="articles-card">
@@ -843,21 +843,17 @@ function renderResults(data) {
     plugins: [barValueLabels]
   });
   if (lineChart) lineChart.destroy();
-  // Build one sorted x-axis from the union of every brand's dates, then plot
-  // each brand's scores as values pinned to their ACTUAL date (null = gap).
-  // `scores` is the 3-day weighted rolling average from the backend; `raw_scores`
-  // and `counts` are per-day ground-truth and come along for the tooltip.
+  // Daily sentiment breakdown as stacked bars. For each day in the requested
+  // window, we draw one bar per brand, segmented into positive / neutral /
+  // negative article counts. This handles clustered data gracefully — a day
+  // with 80 articles produces a tall, rich bar; a day with 0 produces nothing.
+  // That's more honest than a line chart for sparse daily data.
   //
-  // Two confidence signals make the chart honest:
-  //   1. Days with fewer than MIN_COUNT articles are not plotted (the smoothed
-  //      line still bridges across them via spanGaps — they just don't earn a dot).
-  //   2. Dot size scales with article volume (more articles → bigger dot), so
-  //      thin days are visually distinguishable from heavy-coverage days at a glance.
-  const MIN_COUNT = 3;
-  // Use the full REQUESTED window for the x-axis, not just the dates where
-  // articles happen to exist. This makes the chart honestly represent the
-  // analysis period the user asked for — any days with no coverage simply
-  // appear as gaps in the line rather than being silently cropped out.
+  // Lay out: one x-axis tick per date, one bar per (date, brand) thanks to
+  // Chart.js dataset grouping. Brands are visually distinguished by the label
+  // prefix and by clustering their three stack segments into one bar.
+
+  // Build full date axis from the requested window so empty days still show
   let allDates;
   if (data.date_range && data.date_range.from && data.date_range.to) {
     allDates = [];
@@ -867,58 +863,95 @@ function renderResults(data) {
       allDates.push(d.toISOString().slice(0, 10));
     }
   } else {
-    // Fallback: union of dates actually present in the data
     allDates = [...new Set(data.brands.flatMap(b => data.trend[b]?.dates || []))].sort();
   }
-  const lineDatasets = data.brands.map((brand, i) => {
-    const t = data.trend[brand] || { dates: [], scores: [], raw_scores: [], counts: [] };
-    const byDate = new Map(
-      t.dates.map((d, j) => [d, {
-        smoothed: +(t.scores[j] * 100).toFixed(1),
-        raw:      t.raw_scores ? +(t.raw_scores[j] * 100).toFixed(1) : null,
-        count:    t.counts     ?  t.counts[j]                         : null
-      }])
-    );
-    const points = allDates.map(d => {
-      const r = byDate.get(d);
-      if (!r || r.count == null || r.count < MIN_COUNT) return null;   // below threshold → gap
-      return r.smoothed;
+
+  // For each (brand, date) build lookups of the 3 category counts
+  const brandMaps = data.brands.map(brand => {
+    const t = data.trend[brand] || { dates: [], pos_counts: [], neu_counts: [], neg_counts: [] };
+    const m = new Map();
+    (t.dates || []).forEach((d, j) => {
+      m.set(d, {
+        pos: (t.pos_counts || [])[j] || 0,
+        neu: (t.neu_counts || [])[j] || 0,
+        neg: (t.neg_counts || [])[j] || 0
+      });
     });
-    const meta = allDates.map(d => byDate.get(d) || null);  // parallel array for tooltip
-    // Per-point dot radii: sqrt-scaled so the range 3–30 articles maps into ~3–8px
-    const radii = allDates.map(d => {
-      const r = byDate.get(d);
-      if (!r || r.count == null || r.count < MIN_COUNT) return 0;      // no dot for filtered days
-      return Math.max(3, Math.min(8, 2 + Math.sqrt(r.count) * 1.2));
-    });
-    return {
-      label: brand,
-      data: points,
-      _meta: meta,                           // stashed for the tooltip callback below
-      borderColor: COLORS[i],
-      backgroundColor: 'transparent',
-      pointBackgroundColor: COLORS[i],
-      pointRadius: radii,
-      pointHoverRadius: radii.map(r => r > 0 ? r + 2 : 0),
-      tension: 0.3,
-      borderWidth: 2,
-      spanGaps: true
-    };
+    return m;
   });
+
+  // Chart.js needs one dataset per (brand × sentiment). Each brand gets its
+  // own stack group ('stack-0', 'stack-1', …) so bars for the same date
+  // appear side-by-side. Within a brand, the three sentiment datasets share
+  // a stack and stack vertically.
+  const SENTIMENT_COLORS = {
+    pos: { fill: '#DCFCE7', border: '#16A34A' },
+    neu: { fill: '#E5E5E0', border: '#9A968C' },
+    neg: { fill: '#FEE2E2', border: '#DC2626' }
+  };
+  const stackedDatasets = [];
+  data.brands.forEach((brand, i) => {
+    const stackId = `stack-${i}`;
+    const map = brandMaps[i];
+    const ordered = ['neg', 'neu', 'pos'];   // neg on bottom → neu → pos on top (most positive up)
+    const labelFor = { pos: 'Positive', neu: 'Neutral', neg: 'Negative' };
+    ordered.forEach(cat => {
+      stackedDatasets.push({
+        label:           `${brand} — ${labelFor[cat]}`,
+        stack:           stackId,
+        data:            allDates.map(d => (map.get(d) || {})[cat] || 0),
+        backgroundColor: SENTIMENT_COLORS[cat].fill,
+        borderColor:     SENTIMENT_COLORS[cat].border,
+        borderWidth:     1,
+        borderRadius:    cat === 'pos' ? 4 : 0,      // round just the top of each stack
+        borderSkipped:   'bottom',
+        _brand:          brand,
+        _cat:            cat
+      });
+    });
+  });
+
   lineChart = new Chart(document.getElementById('line-chart').getContext('2d'), {
-    type: 'line',
-    data: { labels: allDates, datasets: lineDatasets },
+    type: 'bar',
+    data: { labels: allDates, datasets: stackedDatasets },
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 4 } },
       plugins: {
-        legend: { position: 'bottom', labels: { font: { family: 'DM Sans', size: 12 } } },
+        // Default legend would list 6 entries (brand × sentiment) — noisy.
+        // Use a custom legend with 3 entries for the sentiment categories,
+        // since the brand-grouping is already obvious from bar position.
+        legend: {
+          position: 'bottom',
+          labels: {
+            font: { family: 'DM Sans', size: 12 },
+            // De-duplicate: keep one entry per sentiment category
+            filter: (item, chartData) => {
+              const ds = chartData.datasets[item.datasetIndex];
+              return ds._brand === data.brands[0];   // only the first brand's three labels survive
+            },
+            generateLabels: chart => {
+              const out = [];
+              ['pos','neu','neg'].forEach(cat => {
+                const sampleIdx = chart.data.datasets.findIndex(d => d._brand === data.brands[0] && d._cat === cat);
+                if (sampleIdx < 0) return;
+                const d = chart.data.datasets[sampleIdx];
+                out.push({
+                  text: { pos: 'Positive', neu: 'Neutral', neg: 'Negative' }[cat],
+                  fillStyle:   d.backgroundColor,
+                  strokeStyle: d.borderColor,
+                  lineWidth:   1,
+                  hidden:      false,
+                  index:       sampleIdx
+                });
+              });
+              return out;
+            }
+          }
+        },
         tooltip: {
-          // One consistent format on hover:
-          //   Apr 14, 2026
-          //   MediaTek: 68% positive · 12 articles
-          //   Snapdragon: 55% positive · 8 articles
-          mode: 'index',        // show every brand's value at the hovered date
-          intersect: false,     // hover anywhere on the column, not just on a dot
+          mode: 'index',
+          intersect: false,
           callbacks: {
             title: items => {
               if (!items || !items.length) return '';
@@ -927,23 +960,34 @@ function renderResults(data) {
               const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
               return `${months[+parts[1] - 1]} ${+parts[2]}, ${parts[0]}`;
             },
+            // Build one summary line per brand (not one per bar segment)
             label: ctx => {
-              const meta = ctx.dataset._meta ? ctx.dataset._meta[ctx.dataIndex] : null;
-              if (!meta) return `${ctx.dataset.label}: no articles`;
-              const n = meta.count;
-              if (n < MIN_COUNT) {
-                const unit = n === 1 ? '1 article' : `${n} articles`;
-                return `${ctx.dataset.label}: ${unit} — too thin to plot`;
-              }
-              const articleStr = n === 1 ? '1 article' : `${n} articles`;
-              return `${ctx.dataset.label}: ${meta.smoothed}% positive · ${articleStr}`;
+              const ds = ctx.dataset;
+              if (ds._cat !== 'pos') return null;   // only render on the top segment's tick
+              const idx = ctx.dataIndex;
+              const brand = ds._brand;
+              const bi = data.brands.indexOf(brand);
+              const m = brandMaps[bi].get(allDates[idx]) || { pos: 0, neu: 0, neg: 0 };
+              const total = m.pos + m.neu + m.neg;
+              if (total === 0) return `${brand}: no articles`;
+              const pct = n => Math.round((n / total) * 100);
+              return `${brand}: ${total} article${total === 1 ? '' : 's'} · ${pct(m.pos)}% pos · ${pct(m.neu)}% neu · ${pct(m.neg)}% neg`;
             }
           }
         }
       },
       scales: {
-        y: { min: 0, max: 100, ticks: { callback: v => v + '%', font: { family: 'DM Sans', size: 11 } }, grid: { color: '#F0EDE6' } },
-        x: { ticks: { font: { family: 'DM Sans', size: 11 }, maxRotation: 45 }, grid: { display: false } }
+        y: {
+          stacked: true, beginAtZero: true,
+          ticks: { precision: 0, font: { family: 'DM Sans', size: 11 } },
+          grid: { color: '#F0EDE6' },
+          title: { display: true, text: 'Articles per day', font: { family: 'DM Sans', size: 11 }, color: '#6B6860' }
+        },
+        x: {
+          stacked: true,
+          ticks: { font: { family: 'DM Sans', size: 11 }, maxRotation: 45 },
+          grid: { display: false }
+        }
       }
     }
   });
