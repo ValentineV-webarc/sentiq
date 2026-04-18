@@ -289,6 +289,7 @@ Write your insight summary:"""
 
         response = http_requests.post(
             f"{GEMINI_API_URL}?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
             json={"contents": [{"parts": [{"text": prompt}]}]},
             timeout=20
         )
@@ -709,6 +710,7 @@ def gemini_test():
     try:
         response = http_requests.post(
             f"{GEMINI_API_URL}?key={GEMINI_API_KEY}",
+            headers={"Content-Type": "application/json"},
             json={"contents": [{"parts": [{"text": "Say hello in one sentence."}]}]},
             timeout=20
         )
