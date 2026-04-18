@@ -263,7 +263,7 @@ def check_all_alerts():
                     db.session.commit()
 
 def generate_insights(brands, kpis, articles):
-    """Use Gemini Flash to generate a natural language insight summary."""
+    """Use Groq LLaMA to generate a natural language insight summary."""
     if not GROQ_API_KEY:
         return None
     try:
@@ -298,13 +298,13 @@ Write your insight summary:"""
             text = data['candidates'][0]['content']['parts'][0]['text']
             return text.strip()
         elif response.status_code == 429:
-            print("[Gemini] Rate limit hit — skipping insight this time")
+            print("[Groq] Rate limit hit — skipping insight this time")
             return None
         else:
-            print(f"[Gemini] Error {response.status_code}: {response.text[:200]}")
+            print(f"[Groq] Error {response.status_code}: {response.text[:200]}")
         return None
     except Exception as e:
-        print(f"[Gemini] Error: {e}")
+        print(f"[Groq] Error: {e}")
         return None
 
 scheduler = BackgroundScheduler()
@@ -703,8 +703,8 @@ def export_pdf():
 
 
 
-@app.route('/api/gemini-test')
-def gemini_test():
+@app.route('/api/groq-test')
+def groq_test():
     if not GROQ_API_KEY:
         return jsonify({'error': 'GROQ_API_KEY not set', 'key_set': False})
     try:
