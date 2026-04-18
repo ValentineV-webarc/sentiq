@@ -152,11 +152,19 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .chart-wrap { position: relative; height: 260px; }
 .chart-note { font-size: 11px; color: #9A968C; line-height: 1.5; margin-top: 12px; padding: 8px 10px; background: var(--bg); border-radius: 6px; opacity: 0.9; }
 
-/* Popular comparisons chips — shown in sidebar to help first-time visitors */
-.suggestions-section { display: flex; flex-direction: column; gap: 6px; }
-.suggestion-chip { text-align: left; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--text); cursor: pointer; transition: background 0.15s, border-color 0.15s, transform 0.1s; }
-.suggestion-chip:hover { background: #eeeae2; border-color: #D6D2C9; }
-.suggestion-chip:active { transform: scale(0.98); }
+/* Analysis-period selector — segmented control of day presets + optional custom range */
+.period-chips { display: flex; gap: 4px; }
+.period-chip { flex: 1; padding: 7px 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.period-chip:hover { border-color: #C7C3B9; color: var(--text); }
+.period-chip.active { background: var(--accent); border-color: var(--accent); color: white; }
+.period-custom-toggle { margin-top: 6px; background: none; border: none; font-family: 'DM Sans', sans-serif; font-size: 12px; color: var(--accent); cursor: pointer; padding: 2px 0; text-decoration: underline; text-underline-offset: 2px; }
+.period-custom-toggle:hover { opacity: 0.75; }
+.period-custom { display: none; margin-top: 8px; flex-direction: column; gap: 6px; }
+.period-custom.open { display: flex; }
+.period-custom-row { display: flex; gap: 6px; align-items: center; }
+.period-custom-row label { font-size: 11px; color: var(--text-secondary); width: 32px; flex-shrink: 0; }
+.period-date-input { flex: 1; padding: 6px 8px; font-family: 'DM Sans', sans-serif; font-size: 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text); outline: none; }
+.period-date-input:focus { border-color: var(--accent); }
 .articles-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .articles-header { font-size: 14px; font-weight: 600; color: var(--text); padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -301,12 +309,23 @@ tr:hover td { background: var(--bg); }
       <textarea id="brands-input" placeholder="One brand per line&#10;&#10;e.g.&#10;MediaTek&#10;Snapdragon&#10;Apple"></textarea>
     </div>
     <div>
-      <div class="sidebar-label" style="margin-bottom:10px">Try a comparison</div>
-      <div class="suggestions-section">
-        <button class="suggestion-chip" onclick="loadSuggestion(['Apple','Samsung'])">Apple vs Samsung</button>
-        <button class="suggestion-chip" onclick="loadSuggestion(['Tesla','Ford'])">Tesla vs Ford</button>
-        <button class="suggestion-chip" onclick="loadSuggestion(['Nvidia','AMD'])">Nvidia vs AMD</button>
-        <button class="suggestion-chip" onclick="loadSuggestion(['Netflix','Disney'])">Netflix vs Disney</button>
+      <div class="sidebar-label" style="margin-bottom:10px">Analysis period</div>
+      <div class="period-chips" id="period-chips">
+        <button class="period-chip"        data-days="3"  onclick="setPeriod(3)">3 days</button>
+        <button class="period-chip active" data-days="7"  onclick="setPeriod(7)">7 days</button>
+        <button class="period-chip"        data-days="14" onclick="setPeriod(14)">14 days</button>
+        <button class="period-chip"        data-days="30" onclick="setPeriod(30)">30 days</button>
+      </div>
+      <button class="period-custom-toggle" id="period-custom-toggle" onclick="toggleCustomPeriod()">Custom range</button>
+      <div class="period-custom" id="period-custom">
+        <div class="period-custom-row">
+          <label for="date-from">From</label>
+          <input class="period-date-input" type="date" id="date-from" onchange="onCustomDateChange()">
+        </div>
+        <div class="period-custom-row">
+          <label for="date-to">To</label>
+          <input class="period-date-input" type="date" id="date-to" onchange="onCustomDateChange()">
+        </div>
       </div>
     </div>
     <div>
@@ -315,8 +334,8 @@ tr:hover td { background: var(--bg); }
         <span class="slider-val" id="slider-val">50</span>
       </div>
       <input type="range" id="article-limit" min="10" max="100" value="50"
-             oninput="document.getElementById('slider-val').textContent = this.value">
-      <p class="hint" style="margin-top:6px">NewsAPI free tier limit: 100 per query</p>
+             oninput="document.getElementById('slider-val').textContent = this.value; updateDensityHint();">
+      <p class="hint" style="margin-top:6px" id="density-hint">About 7 articles per day · NewsAPI caps at 100</p>
     </div>
     <button class="btn-run" id="run-btn" onclick="runAnalysis()">Run Analysis</button>
     <div>
@@ -625,11 +644,91 @@ function rerunSearch(h) {
   runAnalysis();
 }
 
-// Popular-comparison chips in the sidebar: populate the textarea and run.
-function loadSuggestion(brands) {
-  document.getElementById('brands-input').value = brands.join('\n');
-  runAnalysis();
+// ── Analysis period ──────────────────────────────────────────────────────────
+// `periodMode` is 'preset' (using selectedDays) or 'custom' (using from/to inputs).
+let periodMode   = 'preset';
+let selectedDays = 7;
+
+function setPeriod(days) {
+  periodMode   = 'preset';
+  selectedDays = days;
+  document.querySelectorAll('#period-chips .period-chip').forEach(c => {
+    c.classList.toggle('active', +c.dataset.days === days);
+  });
+  // Collapse the custom panel if it was open
+  document.getElementById('period-custom').classList.remove('open');
+  document.getElementById('period-custom-toggle').textContent = 'Custom range';
+  updateDensityHint();
 }
+
+function toggleCustomPeriod() {
+  const panel  = document.getElementById('period-custom');
+  const toggle = document.getElementById('period-custom-toggle');
+  const opening = !panel.classList.contains('open');
+  panel.classList.toggle('open');
+  toggle.textContent = opening ? 'Hide custom range' : 'Custom range';
+  if (opening) {
+    // Pre-fill with the currently-selected preset window; set max bounds to
+    // today and min to 30 days ago (NewsAPI free-tier limit).
+    const today = new Date();
+    const to    = today.toISOString().slice(0, 10);
+    const fromDate = new Date(today); fromDate.setDate(today.getDate() - (selectedDays - 1));
+    const from  = fromDate.toISOString().slice(0, 10);
+    const minDate = new Date(today); minDate.setDate(today.getDate() - 30);
+    const min   = minDate.toISOString().slice(0, 10);
+    const fromEl = document.getElementById('date-from');
+    const toEl   = document.getElementById('date-to');
+    if (!fromEl.value) fromEl.value = from;
+    if (!toEl.value)   toEl.value   = to;
+    fromEl.max = to;   fromEl.min = min;
+    toEl.max   = to;   toEl.min   = min;
+  }
+}
+
+function onCustomDateChange() {
+  periodMode = 'custom';
+  // Visually un-highlight all presets when the user types a custom date
+  document.querySelectorAll('#period-chips .period-chip').forEach(c => c.classList.remove('active'));
+  updateDensityHint();
+}
+
+function currentPeriodPayload() {
+  if (periodMode === 'custom') {
+    const from = document.getElementById('date-from').value;
+    const to   = document.getElementById('date-to').value;
+    if (from && to) return { from, to };
+  }
+  return { days: selectedDays };
+}
+
+function currentPeriodDays() {
+  if (periodMode === 'custom') {
+    const from = document.getElementById('date-from').value;
+    const to   = document.getElementById('date-to').value;
+    if (from && to) {
+      const d1 = new Date(from), d2 = new Date(to);
+      return Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+    }
+  }
+  return selectedDays;
+}
+
+function updateDensityHint() {
+  const limit = parseInt(document.getElementById('article-limit').value);
+  const days  = currentPeriodDays();
+  const perDay = limit / days;
+  let text;
+  if (perDay < 1) {
+    // Warn the user their settings will yield less than one article per day
+    text = 'Less than 1 article per day — try a shorter period or more articles';
+  } else {
+    text = `About ${Math.round(perDay)} articles per day · NewsAPI caps at 100`;
+  }
+  document.getElementById('density-hint').textContent = text;
+}
+
+// Run once on load so the hint matches the default state
+window.addEventListener('DOMContentLoaded', updateDensityHint);
 
 // ── Analysis ──────────────────────────────────────────────────────────────────
 async function runAnalysis() {
@@ -650,7 +749,8 @@ async function runAnalysis() {
   const msgInterval = setInterval(() => { mi=(mi+1)%msgs.length; document.getElementById('loading-msg').textContent=msgs[mi]; }, 4000);
 
   try {
-    const res  = await fetch('/api/analyse', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({brands,limit}) });
+    const period = currentPeriodPayload();
+    const res  = await fetch('/api/analyse', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ brands, limit, ...period }) });
     const data = await res.json();
     clearInterval(msgInterval);
     console.log('API response:', JSON.stringify(data).slice(0, 500));
@@ -720,7 +820,19 @@ async function exportPDF() {
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderResults(data) {
   document.getElementById('results-title').textContent = data.brands.join(' vs ');
-  document.getElementById('results-meta').textContent  = `${data.total_articles} articles analysed`;
+  // Format the analysed window like "Apr 10 – Apr 17, 2026" for the header
+  const fmtShort = isoDate => {
+    const parts = String(isoDate).split('-');
+    if (parts.length !== 3) return isoDate;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[+parts[1] - 1]} ${+parts[2]}`;
+  };
+  let meta = `${data.total_articles} articles`;
+  if (data.date_range) {
+    const year = String(data.date_range.to).split('-')[0];
+    meta += ` · ${fmtShort(data.date_range.from)} – ${fmtShort(data.date_range.to)}, ${year}`;
+  }
+  document.getElementById('results-meta').textContent = meta;
 
   // AI Insight
   const insightCard = document.getElementById('insight-card');
