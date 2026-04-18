@@ -158,12 +158,7 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .chart-wrap { position: relative; height: 260px; }
 .chart-note { font-size: 11px; color: #9A968C; line-height: 1.5; margin-top: 12px; padding: 8px 10px; background: var(--bg); border-radius: 6px; opacity: 0.9; }
 
-/* Analysis-period selector — two date pickers (from / to) */
-.period-custom { display: flex; flex-direction: column; gap: 6px; }
-.period-custom-row { display: flex; gap: 6px; align-items: center; }
-.period-custom-row label { font-size: 11px; color: var(--text-secondary); width: 32px; flex-shrink: 0; }
-.period-date-input { flex: 1; padding: 6px 8px; font-family: 'DM Sans', sans-serif; font-size: 12px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text); outline: none; }
-.period-date-input:focus { border-color: var(--accent); }
+/* (removed: analysis period selector — now always defaults to last 7 days on backend) */
 .articles-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .articles-header { font-size: 14px; font-weight: 600; color: var(--text); padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -306,20 +301,6 @@ tr:hover td { background: var(--bg); }
     <div>
       <div class="sidebar-label">Brands to monitor</div>
       <textarea id="brands-input" placeholder="One brand per line&#10;&#10;e.g.&#10;MediaTek&#10;Snapdragon&#10;Apple"></textarea>
-    </div>
-    <div>
-      <div class="sidebar-label" style="margin-bottom:10px">Analysis period</div>
-      <div class="period-custom">
-        <div class="period-custom-row">
-          <label for="date-from">From</label>
-          <input class="period-date-input" type="date" id="date-from" onchange="onDateChange()">
-        </div>
-        <div class="period-custom-row">
-          <label for="date-to">To</label>
-          <input class="period-date-input" type="date" id="date-to" onchange="onDateChange()">
-        </div>
-      </div>
-      <p class="hint" style="margin-top:8px">Up to 30 days back · NewsAPI free tier limit</p>
     </div>
     <div>
       <div class="slider-row">
@@ -642,66 +623,65 @@ function rerunSearch(h) {
 }
 
 // ── Analysis period ──────────────────────────────────────────────────────────
-// The user picks a From/To date pair. On first load we default to the last
-// 7 days and cap the selectable range at the NewsAPI free-tier 30-day limit.
-function initPeriodInputs() {
-  const today = new Date();
-  const iso   = d => d.toISOString().slice(0, 10);
-  const to    = iso(today);
-  const from  = iso(new Date(today.getTime() - 6 * 86400000));       // 7-day window inclusive
-  const min   = iso(new Date(today.getTime() - 30 * 86400000));      // NewsAPI ceiling
-  const fromEl = document.getElementById('date-from');
-  const toEl   = document.getElementById('date-to');
-  fromEl.value = from; toEl.value = to;
-  fromEl.min = min; fromEl.max = to;
-  toEl.min   = min; toEl.max   = to;
-  updateDensityHint();
-}
-
-function onDateChange() {
-  // Keep the From/To pair sane: From can never be after To, and neither can be
-  // in the future. Bumping each other keeps the UI coherent without errors.
-  const fromEl = document.getElementById('date-from');
-  const toEl   = document.getElementById('date-to');
-  if (fromEl.value && toEl.value && fromEl.value > toEl.value) {
-    toEl.value = fromEl.value;
-  }
-  updateDensityHint();
-}
+// Fixed at last 7 days. Exposed as a constant so we can shift it later in one
+// place if the default ever needs to change. No UI — the backend falls back to
+// `days: 7` whenever no custom from/to is sent.
+const DEFAULT_PERIOD_DAYS = 7;
 
 function currentPeriodPayload() {
-  const from = document.getElementById('date-from').value;
-  const to   = document.getElementById('date-to').value;
-  if (from && to) return { from, to };
-  return { days: 7 };   // fallback if something went wrong with the inputs
-}
-
-function currentPeriodDays() {
-  const from = document.getElementById('date-from').value;
-  const to   = document.getElementById('date-to').value;
-  if (from && to) {
-    const d1 = new Date(from), d2 = new Date(to);
-    return Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
-  }
-  return 7;
+  return { days: DEFAULT_PERIOD_DAYS };
 }
 
 function updateDensityHint() {
-  const limit = parseInt(document.getElementById('article-limit').value);
-  const days  = currentPeriodDays();
-  const perDay = limit / days;
+  const limit  = parseInt(document.getElementById('article-limit').value);
+  const perDay = limit / DEFAULT_PERIOD_DAYS;
   let text;
   if (perDay < 1) {
-    // Warn the user their settings will yield less than one article per day
-    text = 'Less than 1 article per day — try a shorter period or more articles';
+    text = 'Less than 1 article per day — raise the slider';
   } else {
     text = `About ${Math.round(perDay)} articles per day · NewsAPI caps at 100`;
   }
   document.getElementById('density-hint').textContent = text;
 }
 
-// Run once on load to set default dates and the density hint
-window.addEventListener('DOMContentLoaded', initPeriodInputs);
+// Run once on load so the hint reflects the slider default
+window.addEventListener('DOMContentLoaded', () => {
+  updateDensityHint();
+  attachStaleListeners();
+});
+
+// ── Stale-results detection ─────────────────────────────────────────────────
+// When a user changes brands, the slider, or the date range AFTER a completed
+// analysis, the on-screen results no longer match the sidebar settings. This
+// detects the mismatch and greys out the results with a banner telling them
+// to re-run — so they're never confused about which inputs produced the chart.
+let lastRunSignature = null;
+
+function currentInputSignature() {
+  const brands = document.getElementById('brands-input').value
+    .split('\n').map(b => b.trim()).filter(Boolean).join('|');
+  const limit  = document.getElementById('article-limit').value;
+  return `${brands}::${limit}`;
+}
+
+function checkStale() {
+  const results = document.getElementById('results');
+  const banner  = document.getElementById('stale-banner');
+  // Only meaningful if we actually have results on screen
+  if (!results.classList.contains('active') || !lastRunSignature) return;
+  const stale = currentInputSignature() !== lastRunSignature;
+  results.classList.toggle('stale', stale);
+  banner.classList.toggle('active', stale);
+}
+
+function attachStaleListeners() {
+  ['brands-input', 'article-limit'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input',  checkStale);
+    el.addEventListener('change', checkStale);
+  });
+}
 
 // ── Analysis ──────────────────────────────────────────────────────────────────
 async function runAnalysis() {
@@ -710,7 +690,8 @@ async function runAnalysis() {
   if (brands.length < 2) { alert('Please enter at least 2 brands.'); return; }
 
   document.getElementById('empty-state').style.display = 'none';
-  document.getElementById('results').classList.remove('active');
+  document.getElementById('results').classList.remove('active', 'stale');
+  document.getElementById('stale-banner').classList.remove('active');
   document.getElementById('loading-state').classList.add('active');
   document.getElementById('run-btn').disabled = true;
   document.getElementById('error-banner').classList.remove('active');
@@ -737,6 +718,9 @@ async function runAnalysis() {
     try {
       lastData = data;
       renderResults(data);
+      // Snapshot the inputs that produced this result; any later change will
+      // flip the banner on via checkStale().
+      lastRunSignature = currentInputSignature();
     } catch(renderErr) {
       console.error('Render error:', renderErr);
       document.getElementById('error-banner').textContent = 'Render error: ' + renderErr.message;
@@ -829,9 +813,14 @@ function renderResults(data) {
     const neg = kpi.negative;
     const neu = Math.max(0, +(100 - pos - neg).toFixed(1));
     const days = kpi.days_with_articles || 0;
-    // Flag sparse coverage visually if articles are crammed into very few days —
-    // this is the pattern that produces confusing trend lines.
-    const sparse = days > 0 && days < 3;
+    // Flag sparse coverage visually when the brand's articles are clustered
+    // into a small portion of the requested window — that's the pattern that
+    // produces misleading flat/absent trend lines.
+    const requestedDays = data.date_range ? data.date_range.days : null;
+    const sparse = days > 0 && (
+      days < 3 ||                                       // absolute floor
+      (requestedDays && days < requestedDays * 0.4)     // less than 40% of the window covered
+    );
     const coverageText = days === 0
       ? `${kpi.total} articles`
       : `${kpi.total} articles across ${days} day${days === 1 ? '' : 's'}`;
@@ -914,7 +903,22 @@ function renderResults(data) {
   //   2. Dot size scales with article volume (more articles → bigger dot), so
   //      thin days are visually distinguishable from heavy-coverage days at a glance.
   const MIN_COUNT = 3;
-  const allDates = [...new Set(data.brands.flatMap(b => data.trend[b]?.dates || []))].sort();
+  // Use the full REQUESTED window for the x-axis, not just the dates where
+  // articles happen to exist. This makes the chart honestly represent the
+  // analysis period the user asked for — any days with no coverage simply
+  // appear as gaps in the line rather than being silently cropped out.
+  let allDates;
+  if (data.date_range && data.date_range.from && data.date_range.to) {
+    allDates = [];
+    const start = new Date(data.date_range.from + 'T00:00:00');
+    const end   = new Date(data.date_range.to   + 'T00:00:00');
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      allDates.push(d.toISOString().slice(0, 10));
+    }
+  } else {
+    // Fallback: union of dates actually present in the data
+    allDates = [...new Set(data.brands.flatMap(b => data.trend[b]?.dates || []))].sort();
+  }
   const lineDatasets = data.brands.map((brand, i) => {
     const t = data.trend[brand] || { dates: [], scores: [], raw_scores: [], counts: [] };
     const byDate = new Map(
