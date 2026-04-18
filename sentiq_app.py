@@ -288,18 +288,22 @@ Sample article headlines:
 Write your insight summary:"""
 
         response = http_requests.post(
-            f"{GROQ_API_URL}?key={GROQ_API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}]},
+            GROQ_API_URL,
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 200,
+                "temperature": 0.7
+            },
             timeout=20
         )
         if response.status_code == 200:
             data = response.json()
-            text = data['candidates'][0]['content']['parts'][0]['text']
-            return text.strip()
-        elif response.status_code == 429:
-            print("[Groq] Rate limit hit — skipping insight this time")
-            return None
+            return data['choices'][0]['message']['content'].strip()
         else:
             print(f"[Groq] Error {response.status_code}: {response.text[:200]}")
         return None
@@ -498,7 +502,7 @@ def test_alert(history_id):
                 <h2 style="color:white;margin:0;font-size:18px">SentIQ</h2>
               </div>
               <div style="border:1px solid #E4E1DA;border-top:none;padding:24px 28px;border-radius:0 0 8px 8px">
-                <h3 style="margin:0 0 8px">✅ Test alert successful!</h3>
+                <h3 style="margin:0 0 8px"> Test alert successful!</h3>
                 <p style="color:#6B6860;font-size:14px;margin:0">
                   Your alert for <strong>{', '.join(json.loads(h.brands))}</strong> is configured.<br>
                   You'll be notified when positive sentiment drops below <strong>{h.alert.threshold:.0f}%</strong>.
