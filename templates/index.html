@@ -98,9 +98,15 @@ main { flex: 1; padding: 2rem 2.5rem; overflow-y: auto; }
 .loading-state p { font-size: 15px; color: var(--text-secondary); }
 .results { display: none; }
 .results.active { display: block; }
-.results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+.results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 12px; flex-wrap: wrap; }
 .results-title { font-family: 'DM Serif Display', serif; font-size: 24px; color: var(--text); }
-.results-meta { font-size: 13px; color: var(--text-secondary); }
+.results-meta { font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 10px; }
+.results-meta .date-pill { background: var(--accent-light); color: var(--accent); padding: 4px 11px; border-radius: 12px; font-weight: 500; font-size: 12px; letter-spacing: 0.01em; white-space: nowrap; }
+.results-stale-banner { display: none; align-items: center; gap: 10px; padding: 10px 14px; background: #FEF3C7; border: 1px solid #F59E0B; border-radius: var(--radius); font-size: 13px; color: #78350F; margin-bottom: 1rem; }
+.results-stale-banner.active { display: flex; }
+.results-stale-banner button { margin-left: auto; padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; background: #78350F; color: white; border: none; border-radius: 5px; cursor: pointer; }
+.results-stale-banner button:hover { opacity: 0.85; }
+.results.stale .kpi-grid, .results.stale .insight-card, .results.stale .charts-grid, .results.stale .articles-card, .results.stale .ab-note { opacity: 0.45; transition: opacity 0.2s; pointer-events: none; }
 .error-banner { display: none; background: var(--negative-bg); border: 1px solid #FECACA; border-radius: var(--radius); padding: 12px 16px; font-size: 14px; color: var(--negative); margin-bottom: 1.5rem; }
 .error-banner.active { display: block; }
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
@@ -353,6 +359,10 @@ tr:hover td { background: var(--bg); }
     </div>
     <div class="results" id="results">
       <div class="error-banner" id="error-banner"></div>
+      <div class="results-stale-banner" id="stale-banner">
+        <span>Settings have changed — click below to refresh the results.</span>
+        <button onclick="runAnalysis()">Run Analysis</button>
+      </div>
       <div class="results-header">
         <div class="results-title" id="results-title">Results</div>
         <div class="results-meta" id="results-meta"></div>
@@ -783,19 +793,25 @@ async function exportPDF() {
 // ── Render ────────────────────────────────────────────────────────────────────
 function renderResults(data) {
   document.getElementById('results-title').textContent = data.brands.join(' vs ');
-  // Format the analysed window like "Apr 10 – Apr 17, 2026" for the header
+  // Format the analysed window like "Apr 10 – Apr 17, 2026" for the header pill
   const fmtShort = isoDate => {
     const parts = String(isoDate).split('-');
     if (parts.length !== 3) return isoDate;
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return `${months[+parts[1] - 1]} ${+parts[2]}`;
   };
-  let meta = `${data.total_articles} articles`;
+  const metaEl = document.getElementById('results-meta');
+  metaEl.innerHTML = '';
+  const countSpan = document.createElement('span');
+  countSpan.textContent = `${data.total_articles} articles`;
+  metaEl.appendChild(countSpan);
   if (data.date_range) {
     const year = String(data.date_range.to).split('-')[0];
-    meta += ` · ${fmtShort(data.date_range.from)} – ${fmtShort(data.date_range.to)}, ${year}`;
+    const pill = document.createElement('span');
+    pill.className = 'date-pill';
+    pill.textContent = `${fmtShort(data.date_range.from)} – ${fmtShort(data.date_range.to)}, ${year}`;
+    metaEl.appendChild(pill);
   }
-  document.getElementById('results-meta').textContent = meta;
 
   // AI Insight
   const insightCard = document.getElementById('insight-card');
