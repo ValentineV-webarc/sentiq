@@ -6,6 +6,8 @@ Brand sentiment monitoring from live news. Compare how the media covers differen
 
 ![SentIQ Dashboard](dashboard.png)
 
+> **Note on the live demo:** the deployed app uses NewsAPI's free tier, which is capped at **100 requests per 24 hours**. Each analysis consumes 2 requests (one per brand). During heavy testing or if multiple reviewers hit the app in a short window, the quota can be exhausted — when that happens the app returns a rate-limit error until the next 12-hour half-reset. If you see a "Something went wrong" message on the demo, that's the most likely cause. The code, dashboard, and logic are unaffected — only the upstream data source is gated.
+
 ---
 
 ## Overview
@@ -33,6 +35,24 @@ Built with Flask on the backend and vanilla JS on the frontend — no frontend f
 
 ---
 
+## Power BI companion dashboard
+
+![Power BI dashboard](powerbi-dashboard.png)
+
+An analyst-facing Power BI dashboard that mirrors the web app's analysis in an executive-report format. Built with six custom DAX measures (Article Count, Positive %, Coverage Days, Positive/Negative/Neutral Count, Sentiment Share), a custom theme matching the web app's colors, and four core visuals: KPI cards, a daily coverage stacked column chart, a sentiment distribution clustered bar chart, and a drill-down articles table.
+
+To explore the dashboard:
+
+1. Open `SentIQ.pbix` in Power BI Desktop
+2. If prompted about the data source, re-point it to `sample-data.csv` in this folder
+3. Click **Refresh**
+
+Or [download as PDF](SentIQ-dashboard.pdf) for a read-only view.
+
+The sample CSV is the result of a MediaTek vs Snapdragon analysis from the live web app. Regenerate with any brand pair by running an analysis and downloading a fresh CSV via the web app's export button.
+
+---
+
 ## Tech
 
 | | |
@@ -48,6 +68,7 @@ Built with Flask on the backend and vanilla JS on the frontend — no frontend f
 | Scheduler | APScheduler |
 | PDF | ReportLab |
 | Charts | Chart.js 4.4 |
+| Analyst view | Power BI Desktop (custom DAX, themed visuals) |
 | Hosting | Railway |
 
 ---
@@ -152,10 +173,20 @@ POST   /api/history/:id/alert/test
 
 ## Notes
 
-- NewsAPI free tier is developer-only — capped at 100 requests per 24 hours, and clusters articles near the present regardless of requested date range. The KPI cards flag "limited coverage" when a brand's articles span fewer days than requested.
-- Groq free tier has generous rate limits — sufficient for demo and regular usage
-- Alerts run on a 1-hour scheduler, so first trigger can take up to an hour
-- Sentiment accuracy is lower than a fine-tuned transformer but good enough for brand-level comparisons
+### NewsAPI free tier limitations
+
+This project runs on NewsAPI's developer (free) tier, which has several real constraints worth naming:
+
+- **100 requests per rolling 24-hour window.** Each analysis uses 2 requests (one per brand). The quota resets in halves — 50 requests come back roughly 12 hours after first being consumed, the remaining 50 at 24 hours. A short burst of testing can exhaust the budget and lock the app until the reset.
+- **Articles cluster near the present.** Even when you request articles from a 7-day window, NewsAPI's free tier prioritises the last 24–48 hours and returns very few older articles. The dashboard handles this honestly: the KPI cards flag "limited coverage" when a brand's articles span fewer days than requested, rather than silently pretending the trend is complete.
+- **30-day historical depth.** Older articles aren't accessible on this tier. The app caps date queries accordingly.
+- **Rate-limit behaviour.** When quota is exhausted, the app shows a "Something went wrong" banner rather than crashing. Analysis requests fail gracefully, existing results stay on screen, and the limit resets automatically.
+
+### Other notes
+
+- Groq free tier has generous rate limits — sufficient for demo and regular usage.
+- Alerts run on a 1-hour scheduler, so the first trigger after configuring one can take up to an hour.
+- Sentiment accuracy is lower than a fine-tuned transformer but sufficient for brand-level aggregate comparisons. A production version would use DistilBERT or similar.
 
 ---
 
