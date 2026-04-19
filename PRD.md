@@ -80,30 +80,31 @@ There's a clear gap in the middle: a tool that's fast, visual, comparison-focuse
 
 ### Must-have (MVP)
 
-- [x] Enter 2+ brand names, trigger analysis
-- [x] Pull articles from NewsAPI (7-day default window)
-- [x] Classify sentiment per article (positive / negative / neutral)
-- [x] KPI cards showing positive-sentiment % per brand
-- [x] Bar chart of sentiment distribution
-- [x] Daily stacked bar chart of coverage × sentiment
-- [x] Welch's t-test for A/B significance
-- [x] AI-generated plain-English insight summary (Groq LLaMA 3.1)
-- [x] Article list with confidence scores and source links
+- Enter 2+ brand names, trigger analysis
+- Pull articles from NewsAPI (7-day default window)
+- Classify sentiment per article (positive / negative / neutral)
+- KPI cards showing positive-sentiment % per brand
+- Bar chart of sentiment distribution
+- Daily stacked bar chart of coverage × sentiment
+- Welch's t-test for A/B significance
+- AI-generated plain-English insight summary (Groq LLaMA 3.1)
+- Article list with confidence scores and source links
 
 ### Should-have (v1.0)
 
-- [x] User accounts (email + password) with search history
-- [x] Email alerts when positive % drops below threshold
-- [x] CSV and PDF export
-- [x] Password reset flow
+- User accounts (email + password) with search history
+- Email alerts when positive % drops below threshold
+- CSV and PDF export
+- Password reset flow
+- Power BI companion dashboard (analyst-facing view built from exported CSV)
 
 ### Could-have (v1.1+)
 
-- [ ] Up to 6 brands in a single comparison
-- [ ] Historical trend view (past 3 months)
-- [ ] Weekly digest email with top findings
-- [ ] Brand-alias matching ("Apple" matches "AAPL", "iPhone maker")
-- [ ] Source credibility weighting
+- Up to 6 brands in a single comparison
+- Historical trend view (past 3 months)
+- Weekly digest email with top findings
+- Brand-alias matching ("Apple" matches "AAPL", "iPhone maker")
+- Source credibility weighting
 
 ### Won't-have (explicit non-scope)
 
@@ -133,6 +134,7 @@ There's a clear gap in the middle: a tool that's fast, visual, comparison-focuse
 | Sentiment | Rule-based keyword classifier | Zero inference cost, runs on any free tier, good enough for headlines |
 | LLM summary | Groq LLaMA 3.1 8B | Free tier is generous, fast, sufficient quality |
 | Frontend | Vanilla JS + Chart.js | No build step, faster to iterate, smaller deploy |
+| Analyst view | Power BI Desktop + custom DAX | Gives non-technical stakeholders a familiar BI interface; reads from CSV export |
 | Hosting | Railway | Free tier, automatic deploys from GitHub |
 
 Full technical spec: see `README.md`.
@@ -163,7 +165,7 @@ Full technical spec: see `README.md`.
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | NewsAPI daily rate limit (100/day) exhausted during demo | High | High | Cache results per (brand, date) pair; upgrade to paid tier if usage scales |
-| NewsAPI's recency bias makes older days look empty | Certain | Medium | Surface honestly via "limited coverage" warnings rather than hiding; plan GDELT integration for v1.1 |
+| NewsAPI's recency bias makes older days look empty | Certain | Medium | Surface honestly via "limited coverage" warnings rather than hiding; document in README so reviewers understand the pattern |
 | Groq API outage removes the AI Insight feature | Low | Low | App degrades gracefully — insight panel simply doesn't render if the API fails |
 | Keyword-based sentiment misclassifies sarcasm / negation | Medium | Low | Acknowledge limitation in README; plan fine-tuned DistilBERT for v2 |
 | User hits password-reset rate limit from Gmail SMTP | Low | Low | Gmail allows 500 emails/day; document upgrade path to SendGrid if needed |
@@ -200,3 +202,7 @@ To measure success post-launch, the following events need to be tracked:
 | Version | Date | Change |
 |---|---|---|
 | 1.0 | Apr 2026 | Initial launch — all must-have and should-have features shipped |
+| 1.0.1 | Apr 2026 | Added Power BI companion dashboard (6 DAX measures, 4 KPI cards, daily coverage + sentiment distribution charts, drill-down article table) built from the CSV export path |
+| 1.0.2 | Apr 2026 | Switched daily trend visual from line chart to stacked coverage bars — more honest representation of sparse daily data where a single misclassified article was swinging the line |
+| 1.0.3 | Apr 2026 | Expanded article payload to include `description`, `published_at`, and `date` fields for richer CSV export and downstream BI use |
+| 1.0.4 | Apr 2026 | Fixed JSON serialization bug where pandas `NaN` values in article descriptions were emitted as the bare token `NaN`, causing `JSON.parse()` to fail in the browser. Replaced with empty strings in text columns and added `app.json.allow_nan = False` as a safety rail |
