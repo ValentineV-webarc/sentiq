@@ -699,8 +699,17 @@ function exportCSV() {
   document.getElementById('csv-icon').style.display='none';
   document.getElementById('csv-spinner').style.display='inline-block';
   try {
-    const headers=['Brand','Title','Sentiment','Confidence','Source','URL'];
-    const rows=lastData.articles.map(a=>[`"${(a.brand||'').replace(/"/g,'""')}"`,`"${(a.title||'').replace(/"/g,'""')}"`,a.sentiment||'',a.confidence||'',`"${(a.source||'').replace(/"/g,'""')}"`,`"${(a.url||'').replace(/"/g,'""')}"`]);
+    const headers=['Brand','Date','Title','Sentiment','Confidence','Source','URL','Description'];
+    const rows=lastData.articles.map(a=>[
+      `"${(a.brand||'').replace(/"/g,'""')}"`,
+      a.date||'',
+      `"${(a.title||'').replace(/"/g,'""')}"`,
+      a.sentiment||'',
+      a.confidence||'',
+      `"${(a.source||'').replace(/"/g,'""')}"`,
+      `"${(a.url||'').replace(/"/g,'""')}"`,
+      `"${(a.description||'').replace(/"/g,'""')}"`
+    ]);
     rows.push([],['--- KPI Summary ---'],['Brand','Positive %','Negative %','Total Articles']);
     lastData.brands.forEach(b=>{ const k=lastData.kpis[b]; rows.push([b,k.positive.toFixed(1)+'%',k.negative.toFixed(1)+'%',k.total]); });
     const csv=[headers.join(','),...rows.map(r=>r.join(','))].join('\n');
