@@ -732,8 +732,13 @@ def analyse():
         ab_test = {'t_stat': round(float(t_stat),3), 'p_value': round(float(p_value),4),
                    'significant': bool(p_value < 0.05)}
 
+    # Sort by confidence so the highest-quality classifications appear first in
+    # the UI article list, but keep a generous cap so the CSV export contains
+    # the full dataset for external analysis tools (Power BI, Excel, etc.).
+    # The cap of 500 comfortably exceeds our max analysis size (100 articles
+    # per brand × ~5 brands) and keeps the JSON payload bounded.
     top_articles = df[['brand','title','sentiment','confidence','source','url','published_at','description','date']]\
-        .sort_values('confidence', ascending=False).head(50).to_dict('records')
+        .sort_values('confidence', ascending=False).head(500).to_dict('records')
 
     trend_data = {}
     for brand in brands:
