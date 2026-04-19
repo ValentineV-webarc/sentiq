@@ -1,0 +1,45 @@
+{
+  "name": "SentIQ Theme",
+  "dataColors": [
+    "#1B3A6B",
+    "#D4A574",
+    "#16A34A",
+    "#DC2626",
+    "#9A968C",
+    "#3B82F6",
+    "#78350F",
+    "#065F46"
+  ],
+  "background": "#F7F6F3",
+  "foreground": "#2B2A26",
+  "tableAccent": "#1B3A6B",
+  "good": "#16A34A",
+  "neutral": "#9A968C",
+  "bad": "#DC2626",
+  "minimum": "#FEE2E2",
+  "center": "#E5E5E0",
+  "maximum": "#DCFCE7",
+  "null": "#F7F6F3",
+  "textClasses": {
+    "title": {
+      "fontFace": "Segoe UI",
+      "fontSize": 20,
+      "color": "#1B3A6B"
+    },
+    "header": {
+      "fontFace": "Segoe UI Semibold",
+      "fontSize": 13,
+      "color": "#2B2A26"
+    },
+    "label": {
+      "fontFace": "Segoe UI",
+      "fontSize": 11,
+      "color": "#6B6860"
+    },
+    "callout": {
+      "fontFace": "Segoe UI",
+      "fontSize": 40,
+      "color": "#1B3A6B"
+    }
+  }
+}
