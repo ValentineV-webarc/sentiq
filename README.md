@@ -6,8 +6,6 @@ Brand sentiment monitoring from live news. Compare how the media covers differen
 
 ![SentIQ Dashboard](dashboard.png)
 
-*Screenshot from an earlier iteration. The live app has since added an AI Insight panel and a daily stacked-coverage chart. Click the demo link above for the current view.*
-
 > **Note on the live demo:** the deployed app uses NewsAPI's free tier, which is capped at **100 requests per 24 hours**. Each analysis consumes 2 requests (one per brand). During heavy testing or if multiple reviewers hit the app in a short window, the quota can be exhausted — when that happens the app returns a rate-limit error until the next 12-hour half-reset. If you see a "Something went wrong" message on the demo, that's the most likely cause. The code, dashboard, and logic are unaffected — only the upstream data source is gated.
 
 ---
