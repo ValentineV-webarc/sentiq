@@ -732,7 +732,7 @@ def analyse():
         ab_test = {'t_stat': round(float(t_stat),3), 'p_value': round(float(p_value),4),
                    'significant': bool(p_value < 0.05)}
 
-    top_articles = df[['brand','title','sentiment','confidence','source','url']]\
+    top_articles = df[['brand','title','sentiment','confidence','source','url','published_at','description','date']]\
         .sort_values('confidence', ascending=False).head(50).to_dict('records')
 
     trend_data = {}
