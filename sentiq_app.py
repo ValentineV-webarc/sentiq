@@ -737,8 +737,18 @@ def analyse():
     # the full dataset for external analysis tools (Power BI, Excel, etc.).
     # The cap of 500 comfortably exceeds our max analysis size (100 articles
     # per brand × ~5 brands) and keeps the JSON payload bounded.
-    top_articles = df[['brand','title','sentiment','confidence','source','url','published_at','description','date']]\
-        .sort_values('confidence', ascending=False).head(500).to_dict('records')
+    #
+    # IMPORTANT: replace pandas NaN with None before serializing. Flask's JSON
+    # encoder emits NaN as the bare token `NaN`, which is not valid JSON and
+    # causes JSON.parse() to fail in the browser. Converting to None gives
+    # proper `null` values in the payload.
+    top_articles = (
+        df[['brand','title','sentiment','confidence','source','url','published_at','description','date']]
+        .sort_values('confidence', ascending=False)
+        .head(500)
+        .where(pd.notnull, None)
+        .to_dict('records')
+    )
 
     trend_data = {}
     for brand in brands:
