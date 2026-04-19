@@ -20,6 +20,22 @@ from datetime import datetime, timedelta
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'sentiq-secret-key-change-in-production')
 
+# Force Flask's JSON serializer to reject NaN/Infinity rather than emit them as
+# the bare tokens `NaN`/`Infinity`, which are valid Python but invalid JSON and
+# cause JSON.parse() to throw in the browser. With this setting, any NaN in the
+# payload raises a ValueError on the server (which we can debug) instead of
+# shipping a broken response to the client.
+try:
+    # Flask 2.3+ API
+    app.json.allow_nan = False
+except AttributeError:
+    # Older Flask — fall back to the legacy JSONEncoder config
+    import json as _json
+    class _StrictJSONEncoder(_json.JSONEncoder):
+        def default(self, o):
+            return super().default(o)
+    app.json_encoder = _StrictJSONEncoder
+
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///sentiq.db')
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
@@ -738,17 +754,38 @@ def analyse():
     # The cap of 500 comfortably exceeds our max analysis size (100 articles
     # per brand × ~5 brands) and keeps the JSON payload bounded.
     #
-    # IMPORTANT: replace pandas NaN with None before serializing. Flask's JSON
-    # encoder emits NaN as the bare token `NaN`, which is not valid JSON and
-    # causes JSON.parse() to fail in the browser. Converting to None gives
-    # proper `null` values in the payload.
-    top_articles = (
+    # IMPORTANT: replace pandas NaN with empty string before serializing. Flask's
+    # JSON encoder emits NaN as the bare token `NaN`, which is not valid JSON
+    # and causes JSON.parse() to fail in the browser. We use fillna('') on the
+    # text fields and do a second sweep over the resulting dicts to guarantee
+    # no NaN or numpy.nan slips through into the payload.
+    article_df = (
         df[['brand','title','sentiment','confidence','source','url','published_at','description','date']]
         .sort_values('confidence', ascending=False)
         .head(500)
-        .where(pd.notnull, None)
-        .to_dict('records')
+        .copy()
     )
+    # Replace any NaN with empty strings in text columns, 0 in numeric columns
+    for col in ('title', 'source', 'url', 'published_at', 'description', 'date'):
+        if col in article_df.columns:
+            article_df[col] = article_df[col].fillna('').astype(str)
+            article_df[col] = article_df[col].replace('nan', '')
+    if 'confidence' in article_df.columns:
+        article_df['confidence'] = article_df['confidence'].fillna(0.0).astype(float)
+
+    top_articles = article_df.to_dict('records')
+
+    # Final safety sweep — iterate every dict and replace any lingering NaN/None
+    # in string fields. This catches edge cases that fillna() can miss (like
+    # float('nan') that got mixed into object columns).
+    import math
+    def _safe(v):
+        if v is None:
+            return ''
+        if isinstance(v, float) and math.isnan(v):
+            return ''
+        return v
+    top_articles = [{k: _safe(v) for k, v in a.items()} for a in top_articles]
 
     trend_data = {}
     for brand in brands:
