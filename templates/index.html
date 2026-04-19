@@ -682,9 +682,10 @@ async function runAnalysis() {
     if (currentUser) loadHistory();
   } catch(e) {
     clearInterval(msgInterval);
+    console.error('Analysis request failed:', e);    // log the actual error
     document.getElementById('loading-state').classList.remove('active');
     document.getElementById('results').classList.add('active');
-    document.getElementById('error-banner').textContent = 'Something went wrong. Please try again.';
+    document.getElementById('error-banner').textContent = 'Something went wrong: ' + (e.message || e);
     document.getElementById('error-banner').classList.add('active');
   } finally {
     document.getElementById('run-btn').disabled = false;
